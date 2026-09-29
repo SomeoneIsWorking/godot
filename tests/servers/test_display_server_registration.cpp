@@ -56,6 +56,26 @@ TEST_CASE("[DisplayServer] Explicit-only servers follow every regular server") {
 	}
 }
 
+#ifdef LINUXBSD_ENABLED
+TEST_CASE("[DisplayServer] The offscreen server is registered as explicit-only") {
+	int offscreen_index = -1;
+	for (int i = 0; i < DisplayServer::get_create_function_count(); i++) {
+		if (String(DisplayServer::get_create_function_name(i)) == "offscreen") {
+			offscreen_index = i;
+		}
+	}
+	REQUIRE(offscreen_index >= 0);
+	CHECK(DisplayServer::is_create_function_explicit_only(offscreen_index));
+
+	const Vector<String> drivers = DisplayServer::get_create_function_rendering_drivers(offscreen_index);
+	// Offscreen rendering is real rendering; the dummy renderer is headless mode.
+	CHECK_FALSE(drivers.has("dummy"));
+#ifdef VULKAN_ENABLED
+	CHECK(drivers.has("vulkan"));
+#endif
+}
+#endif // LINUXBSD_ENABLED
+
 TEST_CASE("[DisplayServer] Out-of-range server indices are treated as explicit-only") {
 	ERR_PRINT_OFF;
 	CHECK(DisplayServer::is_create_function_explicit_only(-1));

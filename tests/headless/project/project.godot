@@ -1,0 +1,20 @@
+; Engine configuration file.
+; Test project for the headless testing features (offscreen rendering,
+; control channel, deterministic stepping, frame-clocked audio).
+
+config_version=5
+
+[application]
+
+config/name="Headless Test"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7")
+
+[display]
+
+window/size/viewport_width=320
+window/size/viewport_height=240
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

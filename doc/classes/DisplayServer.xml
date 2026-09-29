@@ -6,6 +6,7 @@
 	<description>
 		[DisplayServer] handles everything related to window management. It is separated from [OS] as a single operating system may support multiple display servers.
 		[b]Headless mode:[/b] Starting the engine with the [code]--headless[/code] [url=$DOCS_URL/tutorials/editor/command_line_tutorial.html]command line argument[/url] disables all rendering and window management functions. Most functions from [DisplayServer] will return dummy values in this case.
+		[b]Offscreen mode:[/b] Starting the engine with the [code]--offscreen[/code] command line argument (Linux only) renders real frames with the Vulkan or OpenGL driver into a single virtual main window that is never shown, without connecting to any display. The main window has the size given by [code]--resolution[/code] or the project settings, and subwindows must be embedded.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -880,7 +881,7 @@
 			<return type="String" />
 			<description>
 				Returns the name of the [DisplayServer] currently in use. Most operating systems only have a single [DisplayServer], but Linux has access to more than one [DisplayServer] (currently X11 and Wayland).
-				The names of built-in display servers are [code]Windows[/code], [code]macOS[/code], [code]X11[/code] (Linux), [code]Wayland[/code] (Linux), [code]Android[/code], [code]iOS[/code], [code]web[/code] (HTML5), and [code]headless[/code] (when started with the [code]--headless[/code] [url=$DOCS_URL/tutorials/editor/command_line_tutorial.html]command line argument[/url]).
+				The names of built-in display servers are [code]Windows[/code], [code]macOS[/code], [code]X11[/code] (Linux), [code]Wayland[/code] (Linux), [code]Android[/code], [code]iOS[/code], [code]web[/code] (HTML5), [code]offscreen[/code] (Linux, when started with the [code]--offscreen[/code] command line argument), and [code]headless[/code] (when started with the [code]--headless[/code] [url=$DOCS_URL/tutorials/editor/command_line_tutorial.html]command line argument[/url]).
 			</description>
 		</method>
 		<method name="get_primary_screen" qualifiers="const">

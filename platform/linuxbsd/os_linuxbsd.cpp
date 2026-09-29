@@ -30,6 +30,8 @@
 
 #include "os_linuxbsd.h"
 
+#include "offscreen/display_server_offscreen.h"
+
 #include "core/io/certs_compressed.gen.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
@@ -1311,6 +1313,8 @@ OS_LinuxBSD::OS_LinuxBSD() {
 #ifdef WAYLAND_ENABLED
 	DisplayServerWayland::register_wayland_driver();
 #endif
+
+	DisplayServerOffscreen::register_offscreen_driver();
 
 #ifdef FONTCONFIG_ENABLED
 #ifdef SOWRAP_ENABLED

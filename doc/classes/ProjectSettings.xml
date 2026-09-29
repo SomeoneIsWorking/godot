@@ -942,7 +942,7 @@
 			iOS override for [member display/display_server/driver].
 		</member>
 		<member name="display/display_server/driver.linuxbsd" type="String" setter="" getter="">
-			LinuxBSD override for [member display/display_server/driver].
+			LinuxBSD override for [member display/display_server/driver]. [code]offscreen[/code] renders with the GPU into a virtual window without a display (see [code]--offscreen[/code]); like [code]headless[/code], it is only used when selected explicitly and is never a fallback.
 		</member>
 		<member name="display/display_server/driver.macos" type="String" setter="" getter="">
 			MacOS override for [member display/display_server/driver].

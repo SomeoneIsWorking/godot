@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+
+File = env.File
+
+source_files = [File("display_server_offscreen.cpp")]
+
+if env["opengl3"]:
+    source_files.append(File("egl_manager_surfaceless.cpp"))
+
+Return("source_files")

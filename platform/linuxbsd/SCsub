@@ -27,6 +27,8 @@ if env["x11"]:
 if env["wayland"]:
     common_linuxbsd += SConscript("wayland/SCsub")
 
+common_linuxbsd += SConscript("offscreen/SCsub")
+
 if env["speechd"]:
     common_linuxbsd.append("tts_linux.cpp")
     if env["use_sowrap"]:

@@ -298,6 +298,7 @@ bool profile_gpu = false;
 // Constants.
 
 static const String NULL_DISPLAY_DRIVER("headless");
+static const String OFFSCREEN_DISPLAY_DRIVER("offscreen");
 static const String EMBEDDED_DISPLAY_DRIVER("embedded");
 static const String NULL_AUDIO_DRIVER("Dummy");
 
@@ -624,6 +625,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
 	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
+	print_help_option("--offscreen", "Render without a display or window (--display-driver offscreen). Frames are rendered by the GPU as in a windowed run, but never shown.\n");
 	print_help_option("--log-file <file>", "Write output/error log to the specified path instead of the default location defined by the project.\n");
 	print_help_option("", "<file> path should be absolute or relative to the project directory.\n");
 	print_help_option("--write-movie <file>", "Write a video to the specified path (usually with .avi or .png extension).\n");
@@ -1506,6 +1508,21 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 			audio_driver = NULL_AUDIO_DRIVER;
 			display_driver = NULL_DISPLAY_DRIVER;
+
+		} else if (arg == "--offscreen") { // Render real frames without a display or window.
+
+			bool offscreen_available = false;
+			for (int i = 0; i < DisplayServer::get_create_function_count(); i++) {
+				if (OFFSCREEN_DISPLAY_DRIVER == DisplayServer::get_create_function_name(i)) {
+					offscreen_available = true;
+					break;
+				}
+			}
+			if (!offscreen_available) {
+				OS::get_singleton()->print("--offscreen is not supported on this platform, aborting.\n");
+				goto error;
+			}
+			display_driver = OFFSCREEN_DISPLAY_DRIVER;
 
 		} else if (arg == "--embedded") { // Enable embedded mode.
 #ifdef MACOS_ENABLED
@@ -2793,7 +2810,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	GLOBAL_DEF_NOVAL("display/display_server/driver", "default");
 	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.windows", PROPERTY_HINT_ENUM, "default,windows,headless"), "default");
-	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.linuxbsd", PROPERTY_HINT_ENUM, "default,x11,wayland,headless"), "default");
+	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.linuxbsd", PROPERTY_HINT_ENUM, "default,x11,wayland,offscreen,headless"), "default");
 	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.android", PROPERTY_HINT_ENUM, "default,android,headless"), "default");
 	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.ios", PROPERTY_HINT_ENUM, "default,iOS,headless"), "default");
 	GLOBAL_DEF_NOVAL(PropertyInfo(Variant::STRING, "display/display_server/driver.visionos", PROPERTY_HINT_ENUM, "default,visionOS,headless"), "default");
@@ -3321,7 +3338,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 				accessibility_driver_name = "accesskit";
 			}
 		}
-		if (display_driver == NULL_DISPLAY_DRIVER || display_driver == EMBEDDED_DISPLAY_DRIVER || accessibility_mode == AccessibilityServerEnums::AccessibilityMode::ACCESSIBILITY_DISABLED) {
+		if (display_driver == NULL_DISPLAY_DRIVER || display_driver == OFFSCREEN_DISPLAY_DRIVER || display_driver == EMBEDDED_DISPLAY_DRIVER || accessibility_mode == AccessibilityServerEnums::AccessibilityMode::ACCESSIBILITY_DISABLED) {
 			accessibility_driver_name = "dummy";
 		}
 		int accessibility_driver_idx = -1;
