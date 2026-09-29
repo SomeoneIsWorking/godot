@@ -65,7 +65,7 @@ bool DisplayServer::window_early_clear_override_enabled = false;
 Color DisplayServer::window_early_clear_override_color = Color(0, 0, 0, 0);
 
 DisplayServer::DisplayServerCreate DisplayServer::server_create_functions[DisplayServer::MAX_SERVERS] = {
-	{ "headless", &DisplayServerHeadless::create_func, &DisplayServerHeadless::get_rendering_drivers_func }
+	{ "headless", &DisplayServerHeadless::create_func, &DisplayServerHeadless::get_rendering_drivers_func, true }
 };
 
 int DisplayServer::server_create_count = 1;
@@ -2024,13 +2024,21 @@ Ref<Image> DisplayServer::_get_cursor_image_from_resource(const Ref<Resource> &p
 	return image;
 }
 
-void DisplayServer::register_create_function(const char *p_name, CreateFunction p_function, GetRenderingDriversFunction p_get_drivers) {
+void DisplayServer::register_create_function(const char *p_name, CreateFunction p_function, GetRenderingDriversFunction p_get_drivers, bool p_explicit_only) {
 	ERR_FAIL_COND(server_create_count == MAX_SERVERS);
-	// Headless display server is always last
-	server_create_functions[server_create_count] = server_create_functions[server_create_count - 1];
-	server_create_functions[server_create_count - 1].name = p_name;
-	server_create_functions[server_create_count - 1].create_function = p_function;
-	server_create_functions[server_create_count - 1].get_rendering_drivers_function = p_get_drivers;
+	// The headless display server is always last. Explicit-only servers go right before it, and
+	// regular servers go before every explicit-only one, so index 0 is always a regular server
+	// when one is registered.
+	int insert_at = server_create_count - 1;
+	if (!p_explicit_only) {
+		while (insert_at > 0 && server_create_functions[insert_at - 1].explicit_only) {
+			insert_at--;
+		}
+	}
+	for (int i = server_create_count; i > insert_at; i--) {
+		server_create_functions[i] = server_create_functions[i - 1];
+	}
+	server_create_functions[insert_at] = { p_name, p_function, p_get_drivers, p_explicit_only };
 	server_create_count++;
 }
 
@@ -2041,6 +2049,11 @@ int DisplayServer::get_create_function_count() {
 const char *DisplayServer::get_create_function_name(int p_index) {
 	ERR_FAIL_INDEX_V(p_index, server_create_count, nullptr);
 	return server_create_functions[p_index].name;
+}
+
+bool DisplayServer::is_create_function_explicit_only(int p_index) {
+	ERR_FAIL_INDEX_V(p_index, server_create_count, true);
+	return server_create_functions[p_index].explicit_only;
 }
 
 Vector<String> DisplayServer::get_create_function_rendering_drivers(int p_index) {

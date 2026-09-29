@@ -3366,15 +3366,17 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 		String rendering_driver = OS::get_singleton()->get_current_rendering_driver_name();
 		display_server = DisplayServer::create(display_driver_idx, rendering_driver, window_mode, window_vsync_mode, window_flags, window_position, window_size, init_screen, context, init_embed_parent_window_id, err);
-		if (err != OK || display_server == nullptr) {
+		// A server that is only created when requested by name (headless, offscreen) must not
+		// silently turn into a windowed one when it fails.
+		if ((err != OK || display_server == nullptr) && !DisplayServer::is_create_function_explicit_only(display_driver_idx)) {
 			String last_name = DisplayServer::get_create_function_name(display_driver_idx);
 
 			// We can't use this display server, try other ones as fallback.
-			// Skip headless (always last registered) because that's not what users
-			// would expect if they didn't request it explicitly.
-			for (int i = 0; i < DisplayServer::get_create_function_count() - 1; i++) {
-				if (i == display_driver_idx) {
-					continue; // Don't try the same twice.
+			// Skip explicit-only servers (such as headless) because that's not what users
+			// would expect if they didn't request them explicitly.
+			for (int i = 0; i < DisplayServer::get_create_function_count(); i++) {
+				if (i == display_driver_idx || DisplayServer::is_create_function_explicit_only(i)) {
+					continue; // Don't try the same twice, and never fall back to an explicit-only server.
 				}
 				String name = DisplayServer::get_create_function_name(i);
 				WARN_PRINT(vformat("Display driver %s failed, falling back to %s.", last_name, name));
