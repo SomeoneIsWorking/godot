@@ -2869,6 +2869,12 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		AudioDriverDummy::get_dummy_singleton()->set_use_threads(false);
 	}
 
+	if (fixed_fps != -1 && AudioDriverManager::get_driver(audio_driver_idx) == AudioDriverDummy::get_dummy_singleton()) {
+		// With a fixed frame rate, frames are unpaced and frame time is the only clock; the silent
+		// driver mixes per frame so playback positions follow it (the movie writer mixes by itself).
+		AudioDriverDummy::get_dummy_singleton()->set_frame_clocked(true);
+	}
+
 	{
 		window_orientation = DisplayServerEnums::ScreenOrientation(int(GLOBAL_DEF_BASIC("display/window/handheld/orientation", DisplayServerEnums::ScreenOrientation::SCREEN_LANDSCAPE)));
 	}
@@ -4980,6 +4986,11 @@ bool Main::iteration() {
 
 	Engine::get_singleton()->_process_step = process_step;
 	Engine::get_singleton()->_physics_interpolation_fraction = advance.interpolation_fraction;
+
+	if (!movie_writer && AudioDriverDummy::get_dummy_singleton()->is_frame_clocked()) {
+		GodotProfileZoneGrouped(_profile_zone, "AudioDriverDummy::advance");
+		AudioDriverDummy::get_dummy_singleton()->advance(process_step);
+	}
 
 	uint64_t physics_process_ticks = 0;
 	uint64_t process_ticks = 0;

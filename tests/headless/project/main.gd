@@ -9,6 +9,7 @@ var capture_path := ""
 var frames_to_draw := 10
 var frames_drawn := 0
 var key_seen := false
+var player: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -18,6 +19,7 @@ func _ready() -> void:
 		elif arg.begins_with("--frames="):
 			frames_to_draw = arg.trim_prefix("--frames=").to_int()
 	_build_scene()
+	_start_audio()
 
 
 func _build_scene() -> void:
@@ -52,6 +54,30 @@ func _build_scene() -> void:
 	rect.position = Vector2(8, 8)
 	rect.size = Vector2(64, 32)
 	canvas.add_child(rect)
+
+
+func _start_audio() -> void:
+	# Ten seconds of silence at the default mix rate, so positions map 1:1 to mixed frames.
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = 44100
+	var data := PackedByteArray()
+	data.resize(44100 * 2 * 10)
+	stream.data = data
+	player = AudioStreamPlayer.new()
+	player.stream = stream
+	add_child(player)
+	player.play()
+
+
+## Seconds of the test stream that have been mixed; the audio tests read it.
+func audio_position() -> float:
+	return player.get_playback_position()
+
+
+## The audible stream time, per the audio synchronization tutorial.
+func audio_sync_time() -> float:
+	return player.get_playback_position() + AudioServer.get_time_since_last_mix() - AudioServer.get_output_latency()
 
 
 func _input(event: InputEvent) -> void:

@@ -30,6 +30,7 @@
 
 #include "audio_driver_dummy.h"
 
+#include "core/math/math_funcs.h"
 #include "core/os/os.h"
 
 AudioDriverDummy *AudioDriverDummy::singleton = nullptr;
@@ -97,6 +98,59 @@ void AudioDriverDummy::set_use_threads(bool p_use_threads) {
 	use_threads = p_use_threads;
 }
 
+void AudioDriverDummy::set_frame_clocked(bool p_frame_clocked) {
+	ERR_FAIL_COND_MSG(samples_in != nullptr, "The frame clock must be chosen before the audio driver starts.");
+	frame_clocked = p_frame_clocked;
+	if (frame_clocked) {
+		use_threads = false;
+	}
+}
+
+uint32_t AudioDriverDummy::frames_for_duration(double p_seconds, int p_mix_rate, double &r_carry) {
+	// Tolerates the rounding error of durations like 1/60 s, which are exact in frames but not in binary.
+	constexpr double FRAME_EPSILON = 1e-6;
+	ERR_FAIL_COND_V(p_seconds < 0.0 || p_mix_rate <= 0, 0);
+	const double exact = r_carry + p_seconds * p_mix_rate;
+	const double frames = Math::floor(exact + FRAME_EPSILON);
+	r_carry = MAX(0.0, exact - frames);
+	return uint32_t(frames);
+}
+
+void AudioDriverDummy::advance(double p_seconds) {
+	ERR_FAIL_COND_MSG(!frame_clocked, "advance() is only valid for a frame-clocked dummy audio driver.");
+	if (!active.is_set()) {
+		return;
+	}
+	const uint32_t frames = frames_for_duration(p_seconds, mix_rate, frame_clock_carry);
+	uint32_t todo = frames;
+	while (todo) {
+		const uint32_t to_mix = MIN(buffer_frames, todo);
+		_mix(to_mix, samples_in);
+		todo -= to_mix;
+	}
+	last_mix_frames = frames;
+}
+
+void AudioDriverDummy::_mix(uint32_t p_frames, int32_t *p_buffer) {
+	lock();
+	audio_server_process(p_frames, p_buffer);
+	unlock();
+	mixed_frames += p_frames;
+}
+
+float AudioDriverDummy::get_latency() {
+	// The latest mix covers the frame being processed; its start is what is audible now.
+	return frame_clocked ? float(last_mix_frames) / mix_rate : 0.0f;
+}
+
+double AudioDriverDummy::get_time_since_last_mix() {
+	return frame_clocked ? 0.0 : AudioDriver::get_time_since_last_mix();
+}
+
+double AudioDriverDummy::get_time_to_next_mix() {
+	return frame_clocked ? double(last_mix_frames) / mix_rate : AudioDriver::get_time_to_next_mix();
+}
+
 void AudioDriverDummy::set_speaker_mode(SpeakerMode p_mode) {
 	speaker_mode = p_mode;
 }
@@ -115,11 +169,10 @@ void AudioDriverDummy::mix_audio(int p_frames, int32_t *p_buffer) {
 	ERR_FAIL_COND(use_threads == true); // If using threads, this will not work well.
 
 	uint32_t todo = p_frames;
+	last_mix_frames = p_frames;
 	while (todo) {
 		uint32_t to_mix = MIN(buffer_frames, todo);
-		lock();
-		audio_server_process(to_mix, samples_in);
-		unlock();
+		_mix(to_mix, samples_in);
 
 		uint32_t total_samples = to_mix * channels;
 
@@ -142,6 +195,7 @@ void AudioDriverDummy::finish() {
 
 	if (samples_in) {
 		memdelete_arr(samples_in);
+		samples_in = nullptr;
 	}
 }
 

@@ -97,3 +97,25 @@ with ControlClient.connect(port) as game:
     score = game.get("/root/Main/Hud", "score")
     game.capture().image()
 ```
+
+## Frame-clocked silent audio (`--fixed-fps` with the `Dummy` audio driver)
+
+With `--fixed-fps <fps>`, frames are unpaced and frame time is the game's only
+clock. If the `Dummy` audio driver is selected (`--audio-driver Dummy`, or
+`--headless`), it then runs without its thread: each main loop iteration mixes
+exactly the audio that plays during that frame (`process_step × mix_rate`,
+carrying fractions so nothing drifts). As a result:
+
+- `AudioStreamPlayer.get_playback_position()` advances by exactly 1/fps per
+  frame and stands still while the game is held by the control channel.
+- `AudioServer.get_time_since_last_mix()` is `0`, and `get_output_latency()`
+  and `get_time_to_next_mix()` are one frame's audio, so the usual sync formula
+  (`position + time_since_last_mix - output_latency`) gives the frame's start
+  time.
+- `finished` signals, `AudioEffectCapture`, spectrum analyzers and anything
+  else fed by the mixer see audio at the frame rate, however fast the frames
+  run.
+
+Without `--fixed-fps`, the dummy driver keeps its wall-clock thread. With
+`--write-movie`, the movie writer drives the same per-frame mixing and records
+the samples.
