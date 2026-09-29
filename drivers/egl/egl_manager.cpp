@@ -187,6 +187,8 @@ EGLsizeiANDROID EGLManager::_get_cache(const void *p_key, EGLsizeiANDROID p_key_
 
 Error EGLManager::_gldisplay_create_context(GLDisplay &p_gldisplay) {
 	EGLint attribs[] = {
+		EGL_SURFACE_TYPE,
+		_get_platform_surface_type(),
 		EGL_RED_SIZE,
 		1,
 		EGL_BLUE_SIZE,
@@ -199,6 +201,8 @@ Error EGLManager::_gldisplay_create_context(GLDisplay &p_gldisplay) {
 	};
 
 	EGLint attribs_layered[] = {
+		EGL_SURFACE_TYPE,
+		_get_platform_surface_type(),
 		EGL_RED_SIZE,
 		8,
 		EGL_GREEN_SIZE,
@@ -317,6 +321,43 @@ Error EGLManager::window_create(DisplayServerEnums::WindowID p_window_id, void *
 	}
 #endif
 
+	window_make_current(p_window_id);
+
+	return OK;
+}
+
+Error EGLManager::window_create_pbuffer(DisplayServerEnums::WindowID p_window_id, void *p_display, int p_width, int p_height) {
+	ERR_FAIL_COND_V_MSG(!(_get_platform_surface_type() & EGL_PBUFFER_BIT), ERR_UNAVAILABLE, "This EGL platform was not set up for pbuffer surfaces.");
+
+	int gldisplay_id = _get_gldisplay_id(p_display);
+	ERR_FAIL_COND_V(gldisplay_id < 0, ERR_CANT_CREATE);
+
+	GLDisplay &gldisplay = displays[gldisplay_id];
+
+	if (p_window_id >= (int)windows.size()) {
+		windows.resize(p_window_id + 1);
+	}
+
+	GLWindow &glwindow = windows[p_window_id];
+	ERR_FAIL_COND_V_MSG(glwindow.initialized, ERR_ALREADY_EXISTS, "The window already has a surface.");
+	glwindow.gldisplay_id = gldisplay_id;
+
+	const EGLint pbuffer_attribs[] = {
+		EGL_WIDTH,
+		p_width,
+		EGL_HEIGHT,
+		p_height,
+		EGL_NONE,
+	};
+	glwindow.egl_surface = eglCreatePbufferSurface(gldisplay.egl_display, gldisplay.egl_config, pbuffer_attribs);
+	ERR_FAIL_COND_V_MSG(glwindow.egl_surface == EGL_NO_SURFACE, ERR_CANT_CREATE, vformat("Can't create an EGL pbuffer surface. Error code: 0x%04X", eglGetError()));
+
+	glwindow.initialized = true;
+
+	// The slot may have been current with a previous surface, so rebind unconditionally.
+	if (current_window == &glwindow) {
+		current_window = nullptr;
+	}
 	window_make_current(p_window_id);
 
 	return OK;

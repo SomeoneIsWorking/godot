@@ -79,6 +79,8 @@ private:
 	virtual EGLenum _get_platform_api_enum() const = 0;
 	virtual Vector<EGLAttrib> _get_platform_display_attributes() const = 0;
 	virtual Vector<EGLint> _get_platform_context_attribs() const = 0;
+	// Kind of surfaces the chosen config must support (EGL_SURFACE_TYPE).
+	virtual EGLint _get_platform_surface_type() const { return EGL_WINDOW_BIT; }
 
 #ifdef EGL_ANDROID_blob_cache
 	static String shader_cache_dir;
@@ -95,6 +97,9 @@ public:
 
 	Error open_display(void *p_display);
 	Error window_create(DisplayServerEnums::WindowID p_window_id, void *p_display, void *p_native_window, int p_width, int p_height);
+	// Backs a window with an offscreen pbuffer surface instead of a native window. Requires a
+	// config with EGL_PBUFFER_BIT (see `_get_platform_surface_type()`).
+	Error window_create_pbuffer(DisplayServerEnums::WindowID p_window_id, void *p_display, int p_width, int p_height);
 
 	void window_destroy(DisplayServerEnums::WindowID p_window_id);
 
