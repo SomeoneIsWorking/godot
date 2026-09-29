@@ -4,12 +4,17 @@ extends Node3D
 ## User arguments (after `--`):
 ##   --capture=<path>  Save the main viewport to <path> as PNG, then quit.
 ##   --frames=<n>      Number of frames to draw before capturing (default 10).
+##   --trace=<n>       Run a physics simulation seeded by randomize() for <n> frames, print
+##                     a digest of every frame's state and Time readings, then quit.
 
 var capture_path := ""
 var frames_to_draw := 10
 var frames_drawn := 0
 var key_seen := false
 var player: AudioStreamPlayer
+var trace_frames := 0
+var trace := PackedStringArray()
+var bodies: Array[RigidBody3D] = []
 
 
 func _ready() -> void:
@@ -18,8 +23,12 @@ func _ready() -> void:
 			capture_path = arg.trim_prefix("--capture=")
 		elif arg.begins_with("--frames="):
 			frames_to_draw = arg.trim_prefix("--frames=").to_int()
+		elif arg.begins_with("--trace="):
+			trace_frames = arg.trim_prefix("--trace=").to_int()
 	_build_scene()
 	_start_audio()
+	if trace_frames > 0:
+		_build_simulation()
 
 
 func _build_scene() -> void:
@@ -54,6 +63,36 @@ func _build_scene() -> void:
 	rect.position = Vector2(8, 8)
 	rect.size = Vector2(64, 32)
 	canvas.add_child(rect)
+
+
+func _build_simulation() -> void:
+	var ground := StaticBody3D.new()
+	var ground_shape := CollisionShape3D.new()
+	ground_shape.shape = WorldBoundaryShape3D.new()
+	ground.add_child(ground_shape)
+	add_child(ground)
+	# The global generator and a new RandomNumberGenerator are both seeded by randomize().
+	var rng := RandomNumberGenerator.new()
+	for i in 8:
+		var body := RigidBody3D.new()
+		var shape := CollisionShape3D.new()
+		shape.shape = BoxShape3D.new()
+		body.add_child(shape)
+		body.position = Vector3(randf_range(-2, 2), 2 + i, rng.randf_range(-2, 2))
+		body.linear_velocity = Vector3(rng.randf_range(-1, 1), 0, randf_range(-1, 1))
+		add_child(body)
+		bodies.append(body)
+
+
+func _record_trace_frame() -> void:
+	var state := "%d %d %.6f %s" % [Time.get_ticks_usec(), Time.get_unix_time_from_system(), player.get_playback_position(), Time.get_datetime_string_from_system()]
+	for body in bodies:
+		state += " %s" % body.position
+	trace.append(state)
+	if trace.size() == trace_frames:
+		print("trace %s" % "\n".join(trace).sha256_text())
+		print("trace-last %s" % state)
+		get_tree().quit(0)
 
 
 func _start_audio() -> void:
@@ -91,6 +130,8 @@ func is_key_seen() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if trace_frames > 0:
+		_record_trace_frame()
 	if capture_path.is_empty():
 		return
 	frames_drawn += 1

@@ -1085,7 +1085,7 @@
 		<method name="randomize">
 			<return type="void" />
 			<description>
-				Randomizes the seed (or the internal state) of the random number generator. The current implementation uses a number based on the device's time.
+				Randomizes the seed (or the internal state) of the random number generator. The current implementation uses a number based on the device's time, or, when the engine is started with [code]--random-seed &lt;seed&gt;[/code], the next seed of a sequence derived from that seed.
 				[b]Note:[/b] This function is called automatically when the project is run. If you need to fix the seed to have consistent, reproducible results, use [method seed] to initialize the random number generator.
 			</description>
 		</method>

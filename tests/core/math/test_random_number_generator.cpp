@@ -33,6 +33,7 @@
 TEST_FORCE_LINK(test_random_number_generator)
 
 #include "core/math/random_number_generator.h"
+#include "core/math/random_pcg.h"
 
 namespace TestRandomNumberGenerator {
 
@@ -269,6 +270,30 @@ TEST_CASE_MAY_FAIL("[RandomNumberGenerator] randi_range bias check") {
 	for (int i = 0; i < 10; i++) {
 		CHECK_MESSAGE(std::abs(vals[i] / 1000000.0 - 0.1) < 0.01, "Each element should appear roughly 10% of the time");
 	}
+}
+
+TEST_CASE("[RandomNumberGenerator] Seeded randomize() is repeatable") {
+	RandomPCG::set_randomize_seed(1234);
+	Ref<RandomNumberGenerator> first = memnew(RandomNumberGenerator); // The constructor randomizes.
+	Ref<RandomNumberGenerator> second = memnew(RandomNumberGenerator);
+	const uint64_t first_seed = first->get_seed();
+	const uint64_t second_seed = second->get_seed();
+	CHECK(first_seed == RandomPCG::get_randomize_seed(1234, 0));
+	CHECK(second_seed == RandomPCG::get_randomize_seed(1234, 1));
+	CHECK(first_seed != second_seed);
+
+	// Restarting the sequence repeats it, whatever the clock says.
+	RandomPCG::set_randomize_seed(1234);
+	Ref<RandomNumberGenerator> again = memnew(RandomNumberGenerator);
+	CHECK(again->get_seed() == first_seed);
+	again->randomize();
+	CHECK(again->get_seed() == second_seed);
+
+	// A different seed gives a different sequence.
+	CHECK(RandomPCG::get_randomize_seed(1235, 0) != first_seed);
+
+	RandomPCG::clear_randomize_seed();
+	CHECK_FALSE(RandomPCG::is_randomize_seeded());
 }
 
 } // namespace TestRandomNumberGenerator

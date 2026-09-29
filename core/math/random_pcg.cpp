@@ -39,8 +39,28 @@ RandomPCG::RandomPCG(uint64_t p_seed, uint64_t p_inc) :
 	seed(p_seed);
 }
 
+SafeNumeric<uint64_t> RandomPCG::randomize_count;
+
 void RandomPCG::randomize() {
+	if (randomize_seeded) {
+		seed(get_randomize_seed(randomize_base_seed, randomize_count.postincrement()));
+		return;
+	}
 	seed(((uint64_t)OS::get_singleton()->get_unix_time() + OS::get_singleton()->get_ticks_usec()) * pcg.state + PCG_DEFAULT_INC_64);
+}
+
+void RandomPCG::set_randomize_seed(uint64_t p_seed) {
+	randomize_base_seed = p_seed;
+	randomize_count.set(0);
+	randomize_seeded = true;
+}
+
+uint64_t RandomPCG::get_randomize_seed(uint64_t p_base_seed, uint64_t p_call_index) {
+	// SplitMix64 of the call index, so consecutive calls get unrelated seeds.
+	uint64_t z = p_base_seed + (p_call_index + 1) * 0x9E3779B97F4A7C15ULL;
+	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+	z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+	return z ^ (z >> 31);
 }
 
 int64_t RandomPCG::rand_weighted(const Vector<float> &p_weights) {

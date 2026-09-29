@@ -31,6 +31,7 @@
 #pragma once
 
 #include "core/math/math_funcs.h"
+#include "core/templates/safe_refcount.h"
 
 #include <thirdparty/misc/pcg.h>
 
@@ -56,6 +57,10 @@ class RandomPCG {
 	uint64_t current_seed = 0; // The seed the current generator state started from.
 	uint64_t current_inc = 0;
 
+	static inline bool randomize_seeded = false;
+	static inline uint64_t randomize_base_seed = 0;
+	static SafeNumeric<uint64_t> randomize_count;
+
 public:
 	static const uint64_t DEFAULT_SEED = 12047754176567800795U;
 	static const uint64_t DEFAULT_INC = PCG_DEFAULT_INC_64;
@@ -72,6 +77,16 @@ public:
 	_FORCE_INLINE_ uint64_t get_state() const { return pcg.state; }
 
 	void randomize();
+
+	// Makes randomize() deterministic (--random-seed): the n-th call anywhere in the process seeds
+	// its generator from `p_seed` and n instead of the clock. Calls on different threads may take
+	// their turns in a different order from run to run.
+	static void set_randomize_seed(uint64_t p_seed);
+	// Restores clock-based randomize().
+	static void clear_randomize_seed() { randomize_seeded = false; }
+	static bool is_randomize_seeded() { return randomize_seeded; }
+	// The seed that the n-th randomize() call uses under set_randomize_seed().
+	static uint64_t get_randomize_seed(uint64_t p_base_seed, uint64_t p_call_index);
 	_FORCE_INLINE_ uint32_t rand() {
 		return pcg32_random_r(&pcg);
 	}

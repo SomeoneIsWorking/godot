@@ -49,8 +49,20 @@ class Time : public Object {
 	static void _bind_methods();
 	static Time *singleton;
 
+	// Frame rate of the frame time clock, or 0 when the system clock is used.
+	int frame_time_fps = 0;
+
 public:
 	static Time *get_singleton();
+
+	// Frame time (--frame-time) starts at 2000-01-01T00:00:00Z.
+	static constexpr int64_t FRAME_TIME_EPOCH = 946684800;
+
+	// Makes the system-time and ticks methods report time from the process frame count at `p_fps`
+	// frames per second (0 restores the system clock), so fixed-FPS runs are reproducible. The time
+	// zone is UTC. Engine internals keep using the OS clock.
+	void set_frame_time_fps(int p_fps);
+	int get_frame_time_fps() const { return frame_time_fps; }
 
 	// Methods that convert times.
 	Dictionary get_datetime_dict_from_unix_time(int64_t p_unix_time_val) const;

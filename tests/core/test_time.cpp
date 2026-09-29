@@ -32,6 +32,7 @@
 
 TEST_FORCE_LINK(test_time)
 
+#include "core/config/engine.h"
 #include "core/os/time.h"
 
 namespace TestTime {
@@ -140,6 +141,29 @@ TEST_CASE("[Time] System time methods") {
 
 	CHECK_MESSAGE(time->get_ticks_msec() >= ticks_msec, "Time get_ticks_msec: The value has not decreased.");
 	CHECK_MESSAGE(time->get_ticks_usec() > ticks_usec, "Time get_ticks_usec: The value has increased.");
+}
+
+TEST_CASE("[Time] Frame time follows the process frame count") {
+	Time *time = Time::get_singleton();
+	const uint64_t frames = Engine::get_singleton()->get_process_frames();
+
+	time->set_frame_time_fps(60);
+	CHECK(time->get_ticks_usec() == frames * 1000000 / 60);
+	CHECK(time->get_ticks_msec() == frames * 1000 / 60);
+	CHECK(time->get_unix_time_from_system() == doctest::Approx(Time::FRAME_TIME_EPOCH + frames / 60.0));
+	CHECK(time->get_unix_time_from_system() == time->get_unix_time_from_system()); // Stands still within a frame.
+	CHECK(time->get_datetime_string_from_system(false) == time->get_datetime_string_from_unix_time(Time::FRAME_TIME_EPOCH + int64_t(frames / 60)));
+	CHECK(time->get_datetime_string_from_system(true) == time->get_datetime_string_from_system(false)); // Always UTC.
+	CHECK(int(time->get_time_zone_from_system()["bias"]) == 0);
+
+	ERR_PRINT_OFF;
+	time->set_frame_time_fps(-1);
+	ERR_PRINT_ON;
+	CHECK(time->get_frame_time_fps() == 60); // Invalid rates are rejected.
+
+	time->set_frame_time_fps(0);
+	CHECK(time->get_frame_time_fps() == 0);
+	CHECK(time->get_unix_time_from_system() > 1600000000); // Back on the system clock.
 }
 
 } // namespace TestTime

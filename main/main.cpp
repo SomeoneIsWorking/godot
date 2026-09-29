@@ -48,6 +48,7 @@
 #include "core/io/image_loader.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+#include "core/math/random_pcg.h"
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
 #include "core/object/script_language.h"
@@ -285,6 +286,7 @@ static int frame_delay = 0;
 static int audio_output_latency = 0;
 static bool disable_render_loop = false;
 static int fixed_fps = -1;
+static bool use_frame_time = false;
 static MovieWriter *movie_writer = nullptr;
 static bool disable_vsync = false;
 static bool print_fps = false;
@@ -692,6 +694,8 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--disable-render-loop", "Disable render loop so rendering only occurs when called explicitly from script.\n");
 	print_help_option("--disable-crash-handler", "Disable crash handler when supported by the platform code.\n");
 	print_help_option("--fixed-fps <fps>", "Force a fixed number of frames per second. This setting disables real-time synchronization.\n");
+	print_help_option("--frame-time", "Report time from the frame count (requires --fixed-fps): Time's ticks and system time advance by exactly 1/fps per frame, starting at 2000-01-01T00:00:00 UTC.\n");
+	print_help_option("--random-seed <seed>", "Seed every randomize() call, including the one at startup, from <seed> instead of the clock, so runs are repeatable.\n");
 	print_help_option("--delta-smoothing <enable>", "Enable or disable frame delta smoothing [\"enable\", \"disable\"].\n");
 	print_help_option("--print-fps", "Print the frames per second to the stdout.\n");
 #ifdef TOOLS_ENABLED
@@ -2007,6 +2011,16 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				OS::get_singleton()->print("Missing write-movie argument, aborting.\n");
 				goto error;
 			}
+		} else if (arg == "--random-seed") {
+			if (N && N->get().is_valid_int()) {
+				RandomPCG::set_randomize_seed(uint64_t(N->get().to_int()));
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("Missing or invalid <seed> argument for --random-seed <seed>, aborting.\n");
+				goto error;
+			}
+		} else if (arg == "--frame-time") {
+			use_frame_time = true;
 		} else if (arg == "--disable-vsync") {
 			disable_vsync = true;
 		} else if (arg == "--print-fps") {
@@ -2110,6 +2124,14 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		}
 
 		I = N;
+	}
+
+	if (use_frame_time) {
+		if (fixed_fps == -1) {
+			OS::get_singleton()->print("--frame-time requires --fixed-fps or --write-movie, aborting.\n");
+			goto error;
+		}
+		Time::get_singleton()->set_frame_time_fps(fixed_fps);
 	}
 
 #ifdef TOOLS_ENABLED

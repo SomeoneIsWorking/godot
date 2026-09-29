@@ -9,6 +9,7 @@
 		Conversion methods assume "the same timezone", and do not handle timezone conversions or DST automatically. Leap seconds are also not handled, they must be done manually if desired. Suffixes such as "Z" are not handled, you need to strip them away manually.
 		When getting time information from the system, the time can either be in the local timezone or UTC depending on the [code]utc[/code] parameter. However, the [method get_unix_time_from_system] method always uses UTC as it returns the seconds passed since the [url=https://en.wikipedia.org/wiki/Unix_time]Unix epoch[/url].
 		[b]Important:[/b] The [code]_from_system[/code] methods use the system clock that the user can manually set. [b]Never use[/b] this method for precise time calculation since its results are subject to automatic adjustments by the user or the operating system. [b]Always use[/b] [method get_ticks_usec] or [method get_ticks_msec] for precise time calculation instead, since they are guaranteed to be monotonic (i.e. never decrease).
+		[b]Note:[/b] When the engine is started with [code]--frame-time[/code] (together with [code]--fixed-fps[/code]), the ticks and [code]_from_system[/code] methods report time derived from the number of processed frames instead of the system clock, starting at [code]2000-01-01T00:00:00[/code] UTC, so that runs are reproducible. The time zone is then UTC.
 	</description>
 	<tutorials>
 	</tutorials>

@@ -119,3 +119,47 @@ carrying fractions so nothing drifts). As a result:
 Without `--fixed-fps`, the dummy driver keeps its wall-clock thread. With
 `--write-movie`, the movie writer drives the same per-frame mixing and records
 the samples.
+
+## Deterministic runs (`--fixed-fps`, `--random-seed`, `--frame-time`)
+
+```sh
+godot --path game --headless --fixed-fps 60 --random-seed 42 --frame-time
+```
+
+- `--fixed-fps <fps>` (existing): every frame advances `_process` and physics by
+  exactly 1/fps and frames run unpaced, as fast as they can be produced.
+  `--write-movie` implies it.
+- `--random-seed <seed>`: every `randomize()` call (the one `SceneTree` makes at
+  startup for `randf()`/`randi()`, `RandomNumberGenerator.new()`, and explicit
+  calls) seeds from a sequence derived from `<seed>` instead of the clock.
+- `--frame-time` (requires `--fixed-fps`): `Time.get_ticks_msec/usec()` report
+  `frame × 1/fps`, and `Time.get_unix_time_from_system()` and the
+  `*_from_system()` date functions report 2000-01-01T00:00:00 UTC plus that time;
+  the time zone is UTC. Time stands still within a frame.
+- With the `Dummy` audio driver, audio is mixed per frame (see above).
+
+These compose with `--offscreen`, `--control-port` and `--write-movie`; the
+tests check that two runs produce the same per-frame trace of physics state
+and time readings, and byte-identical movie frames.
+
+What is deterministic under all three flags: `_process`/`_physics_process`
+deltas and counts, timers, tweens, animations, input injected through the
+control channel (delivered on a known frame), random numbers, physics
+(Godot Physics and Jolt step deterministically on one thread), audio
+playback positions with the `Dummy` driver, and rendered frames on the same
+GPU, driver and binary.
+
+What is not:
+
+- Work on other threads: `WorkerThreadPool` task order, threaded resource
+  loading (`ResourceLoader.load_threaded_*` finishes on a varying frame),
+  `physics/*/run_on_separate_thread`, navigation map synchronization and
+  `Thread`s in game code. `randomize()` calls from several threads take their
+  seeds in a varying order.
+- `OS` and engine clocks: `OS.delay_*`, `Engine.get_frames_per_second()`,
+  `Performance` monitors, profilers and anything else that reads the real
+  clock rather than `Time`. Only `Time`'s methods follow `--frame-time`.
+- The real audio drivers (they mix on the device's clock), networking, file
+  timestamps, and hardware input.
+- Rendering across different GPUs, drivers or engine builds, and GPU-driven
+  effects that read timers.

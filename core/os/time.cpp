@@ -30,6 +30,7 @@
 
 #include "time.h" // NOLINT(modernize-deprecated-headers) False positive with C-Header of the same name.
 
+#include "core/config/engine.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 
@@ -319,8 +320,28 @@ String Time::get_offset_string_from_offset_minutes(int64_t p_offset_minutes) con
 	return vformat("%s%02d:%02d", sign, offset_hours, offset_minutes);
 }
 
+static OS::DateTime _system_datetime(const Time *p_time, bool p_utc) {
+	if (p_time->get_frame_time_fps() <= 0) {
+		return OS::get_singleton()->get_datetime(p_utc);
+	}
+	// Frame time is always UTC, so local and UTC time are the same.
+	const int64_t p_unix_time_val = Time::FRAME_TIME_EPOCH + int64_t(p_time->get_ticks_usec() / 1000000);
+	UNIX_TIME_TO_HMS
+	UNIX_TIME_TO_YMD
+	OS::DateTime dt;
+	dt.year = year;
+	dt.month = month;
+	dt.day = day;
+	dt.weekday = Weekday(Math::posmod(day_number + WEEKDAY_THURSDAY, 7));
+	dt.hour = hour;
+	dt.minute = minute;
+	dt.second = second;
+	dt.dst = false;
+	return dt;
+}
+
 Dictionary Time::get_datetime_dict_from_system(bool p_utc) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	Dictionary datetime;
 	datetime[YEAR_KEY] = dt.year;
 	datetime[MONTH_KEY] = (uint8_t)dt.month;
@@ -334,7 +355,7 @@ Dictionary Time::get_datetime_dict_from_system(bool p_utc) const {
 }
 
 Dictionary Time::get_date_dict_from_system(bool p_utc) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	Dictionary date_dictionary;
 	date_dictionary[YEAR_KEY] = dt.year;
 	date_dictionary[MONTH_KEY] = (uint8_t)dt.month;
@@ -344,7 +365,7 @@ Dictionary Time::get_date_dict_from_system(bool p_utc) const {
 }
 
 Dictionary Time::get_time_dict_from_system(bool p_utc) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	Dictionary time_dictionary;
 	time_dictionary[HOUR_KEY] = dt.hour;
 	time_dictionary[MINUTE_KEY] = dt.minute;
@@ -353,23 +374,29 @@ Dictionary Time::get_time_dict_from_system(bool p_utc) const {
 }
 
 String Time::get_datetime_string_from_system(bool p_utc, bool p_use_space) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	const String format_string = p_use_space ? "%04d-%02d-%02d %02d:%02d:%02d" : "%04d-%02d-%02dT%02d:%02d:%02d";
 	return vformat(format_string, dt.year, (uint8_t)dt.month, dt.day, dt.hour, dt.minute, dt.second);
 }
 
 String Time::get_date_string_from_system(bool p_utc) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	// Android is picky about the types passed to make Variant, so we need a cast.
 	return vformat("%04d-%02d-%02d", dt.year, (uint8_t)dt.month, dt.day);
 }
 
 String Time::get_time_string_from_system(bool p_utc) const {
-	OS::DateTime dt = OS::get_singleton()->get_datetime(p_utc);
+	OS::DateTime dt = _system_datetime(this, p_utc);
 	return vformat("%02d:%02d:%02d", dt.hour, dt.minute, dt.second);
 }
 
 Dictionary Time::get_time_zone_from_system() const {
+	if (frame_time_fps > 0) {
+		Dictionary utc;
+		utc["bias"] = 0;
+		utc["name"] = "UTC";
+		return utc;
+	}
 	OS::TimeZoneInfo info = OS::get_singleton()->get_time_zone_info();
 	Dictionary ret_timezone;
 	ret_timezone["bias"] = info.bias;
@@ -378,15 +405,29 @@ Dictionary Time::get_time_zone_from_system() const {
 }
 
 double Time::get_unix_time_from_system() const {
+	if (frame_time_fps > 0) {
+		return FRAME_TIME_EPOCH + get_ticks_usec() / 1000000.0;
+	}
 	return OS::get_singleton()->get_unix_time();
 }
 
 uint64_t Time::get_ticks_msec() const {
+	if (frame_time_fps > 0) {
+		return get_ticks_usec() / 1000;
+	}
 	return OS::get_singleton()->get_ticks_msec();
 }
 
 uint64_t Time::get_ticks_usec() const {
+	if (frame_time_fps > 0) {
+		return Engine::get_singleton()->get_process_frames() * 1000000 / uint64_t(frame_time_fps);
+	}
 	return OS::get_singleton()->get_ticks_usec();
+}
+
+void Time::set_frame_time_fps(int p_fps) {
+	ERR_FAIL_COND_MSG(p_fps < 0, "The frame time rate can't be negative.");
+	frame_time_fps = p_fps;
 }
 
 void Time::_bind_methods() {
