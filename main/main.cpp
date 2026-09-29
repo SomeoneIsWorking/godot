@@ -149,6 +149,10 @@
 #include "modules/mono/editor/bindings_generator.h"
 #endif
 
+#if defined(MODULE_CONTROL_CHANNEL_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/control_channel/control_channel.h"
+#endif
+
 #ifdef MODULE_GDSCRIPT_ENABLED
 #include "modules/gdscript/gdscript.h"
 #if defined(TOOLS_ENABLED) && !defined(GDSCRIPT_NO_LSP)
@@ -675,6 +679,10 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--debug-avoidance", "Show navigation avoidance debug visuals when running the scene.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_DEBUG);
 	print_help_option("--debug-stringnames", "Print all StringName allocations to stdout when the engine quits.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_DEBUG);
 	print_help_option("--debug-canvas-item-redraw", "Display a rectangle each time a canvas item requests a redraw (useful to troubleshoot low processor mode).\n", CLI_OPTION_AVAILABILITY_TEMPLATE_DEBUG);
+#ifdef MODULE_CONTROL_CHANNEL_ENABLED
+	print_help_option("--control-port <port>", "Open the control channel on 127.0.0.1:<port> (0 picks a free port) so a test driver can step frames, inject input and inspect the scene.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_DEBUG);
+	print_help_option("--control-wait", "Hold the game on its first frame until a control channel client resumes or steps it.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_DEBUG);
+#endif // MODULE_CONTROL_CHANNEL_ENABLED
 
 #endif
 	print_help_option("--max-fps <fps>", "Set a maximum number of frames per second rendered (can be used to limit power usage). A value of 0 results in unlimited framerate.\n");
@@ -1930,6 +1938,18 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			StringName::set_debug_stringnames(true);
 		} else if (arg == "--debug-mute-audio") {
 			debug_mute_audio = true;
+#ifdef MODULE_CONTROL_CHANNEL_ENABLED
+		} else if (arg == "--control-port") {
+			if (N && N->get().is_valid_int() && N->get().to_int() >= 0 && N->get().to_int() <= 65535) {
+				ControlChannel::port_override = N->get().to_int();
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("<port> argument for --control-port <port> must be between 0 and 65535.\n");
+				goto error;
+			}
+		} else if (arg == "--control-wait") {
+			ControlChannel::wait_override = true;
+#endif // MODULE_CONTROL_CHANNEL_ENABLED
 #endif // defined(DEBUG_ENABLED)
 #if defined(TOOLS_ENABLED) && (defined(WINDOWS_ENABLED) || defined(LINUXBSD_ENABLED))
 		} else if (arg == "--test-rd-support") {

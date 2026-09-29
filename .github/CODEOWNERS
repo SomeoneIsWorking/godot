@@ -158,6 +158,8 @@
 /modules/gdscript/doc_classes/                @godotengine/gdscript @godotengine/documentation
 /modules/gdscript/editor/                     @godotengine/gdscript @godotengine/script-editor
 /modules/gdscript/tests/                      @godotengine/gdscript @godotengine/tests
+/modules/control_channel/                     @godotengine/tests
+/modules/control_channel/tests/               @godotengine/tests
 /modules/jsonrpc/                             @godotengine/gdscript @godotengine/network
 /modules/jsonrpc/tests/                       @godotengine/gdscript @godotengine/network @godotengine/tests
 /modules/mono/                                @godotengine/dotnet

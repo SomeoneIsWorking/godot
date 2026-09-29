@@ -524,6 +524,15 @@
 		<member name="debug/canvas_items/debug_redraw_time" type="float" setter="" getter="" default="1.0">
 			If canvas item redraw debugging is active, this will be the time the flash will last each time they redraw.
 		</member>
+		<member name="debug/control_channel/enabled" type="bool" setter="" getter="" default="false">
+			If [code]true[/code], debug builds open the control channel on [code]127.0.0.1[/code] at [member debug/control_channel/port] when the game starts. A test driver can then pause the game, step an exact number of frames, inject input, read and write node properties, call methods and capture frames, using newline-delimited JSON-RPC 2.0. The [code]--control-port &lt;port&gt;[/code] command line argument enables the channel and overrides the port. Release builds never open the channel.
+		</member>
+		<member name="debug/control_channel/port" type="int" setter="" getter="" default="6070">
+			The loopback TCP port of the control channel. [code]0[/code] picks a free port, which is printed as [code]Control channel listening on 127.0.0.1:&lt;port&gt;[/code].
+		</member>
+		<member name="debug/control_channel/wait_for_client" type="bool" setter="" getter="" default="false">
+			If [code]true[/code], the game is held on its first frame until a control channel client resumes or steps it (same as [code]--control-wait[/code]).
+		</member>
 		<member name="debug/file_logging/enable_file_logging" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], logs all output and error messages to files. See also [member debug/file_logging/log_path], [member debug/file_logging/max_log_files], and [member application/run/flush_stdout_on_print].
 		</member>

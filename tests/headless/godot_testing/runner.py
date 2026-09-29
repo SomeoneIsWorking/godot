@@ -38,6 +38,20 @@ class Result:
     output: str
 
 
+def _command(args: Sequence[str], project: Path, user_args: Sequence[str]) -> list[str]:
+    command = [str(find_godot()), "--path", str(project), *args]
+    return [*command, "--", *user_args] if user_args else command
+
+
+def _environment(env: Mapping[str, str] | None, keep_display: bool) -> dict[str, str]:
+    run_env = dict(os.environ)
+    if not keep_display:
+        for name in _DISPLAY_VARIABLES:
+            run_env.pop(name, None)
+    run_env.update(env or {})
+    return run_env
+
+
 def run(
     args: Sequence[str],
     *,
@@ -48,17 +62,9 @@ def run(
     timeout: float = 120.0,
 ) -> Result:
     """Runs Godot on `project` and returns its exit code and combined output."""
-    run_env = dict(os.environ)
-    if not keep_display:
-        for name in _DISPLAY_VARIABLES:
-            run_env.pop(name, None)
-    run_env.update(env or {})
-    command = [str(find_godot()), "--path", str(project), *args]
-    if user_args:
-        command += ["--", *user_args]
     completed = subprocess.run(
-        command,
-        env=run_env,
+        _command(args, project, user_args),
+        env=_environment(env, keep_display),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -66,3 +72,46 @@ def run(
         check=False,
     )
     return Result(completed.returncode, completed.stdout)
+
+
+@dataclass
+class Launched:
+    """A running Godot process whose combined output goes to `log`."""
+
+    process: subprocess.Popen[bytes]
+    log: Path
+
+    def output(self) -> str:
+        return self.log.read_text(errors="replace")
+
+
+def launch(
+    args: Sequence[str],
+    log: Path,
+    *,
+    project: Path = TEST_PROJECT,
+    user_args: Sequence[str] = (),
+    env: Mapping[str, str] | None = None,
+) -> Launched:
+    """Starts Godot on `project` without a display; the caller must `stop()` it.
+
+    Output goes to a file rather than a pipe, so a chatty game can never block on a full pipe.
+    """
+    with log.open("wb") as sink:
+        process = subprocess.Popen(
+            _command(args, project, user_args),
+            env=_environment(env, keep_display=False),
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+        )
+    return Launched(process, log)
+
+
+def stop(launched: Launched, timeout: float = 30.0) -> tuple[int, str]:
+    """Waits for the process to exit, killing it (by PID) if it doesn't; returns its exit code and output."""
+    try:
+        launched.process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        launched.process.kill()
+        launched.process.wait()
+    return launched.process.returncode, launched.output()

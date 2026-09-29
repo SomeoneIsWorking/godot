@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+Import("env_modules")
+
+env_control_channel = env_modules.Clone()
+env_control_channel.add_source_files(env.modules_sources, "*.cpp")
+
+if env["tests"]:
+    env_control_channel.add_source_files(env.modules_sources, "./tests/*.cpp")

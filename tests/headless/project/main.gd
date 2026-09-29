@@ -8,6 +8,7 @@ extends Node3D
 var capture_path := ""
 var frames_to_draw := 10
 var frames_drawn := 0
+var key_seen := false
 
 
 func _ready() -> void:
@@ -51,6 +52,16 @@ func _build_scene() -> void:
 	rect.position = Vector2(8, 8)
 	rect.size = Vector2(64, 32)
 	canvas.add_child(rect)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed:
+		key_seen = true
+
+
+## Whether a key press has reached `_input()`; the control channel tests read it.
+func is_key_seen() -> bool:
+	return key_seen
 
 
 func _process(_delta: float) -> void:

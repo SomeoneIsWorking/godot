@@ -44,3 +44,56 @@ on a desktop session once:
 ```sh
 uv run --locked python capture_reference.py   # writes scratch/headless-reference/<driver>.png
 ```
+
+## Control channel (`--control-port`)
+
+Debug builds (editor and debug export templates) can open a loopback endpoint
+that a test driver uses to control the game frame by frame:
+
+```sh
+godot --path game --offscreen --control-port 0 --control-wait
+# prints: Control channel listening on 127.0.0.1:<port>
+```
+
+- `--control-port <port>` opens it on `127.0.0.1` (`0` picks a free port). The
+  project settings `debug/control_channel/enabled`, `port` and
+  `wait_for_client` do the same from the project. Release builds never open it.
+- `--control-wait` holds the game on its first frame until a client steps or
+  resumes it, so a driver sees every frame from the start.
+- Protocol: JSON-RPC 2.0, one request or response per line. Values use
+  `JSON.from_native()` encoding (`"i:3"`, `{"type": "Vector3", "args": [...]}`).
+
+| Method | Params | Result |
+|---|---|---|
+| `state` | | `{frame, physics_frame, paused}` |
+| `pause` | | state, once the game is held |
+| `step` | `frames` (default 1) | state, once `frames` more frames ran |
+| `resume` | | state |
+| `quit` | `code` | |
+| `tree` | `path` (`/root`), `depth` (1, max 64) | `{name, class, path, child_count, children}` |
+| `get` / `set` | `path`, `property` (`position:x` works), `value` | value / null |
+| `call` | `path`, `method`, `args` | return value |
+| `action` | `action`, `pressed`, `strength` | queues an `InputEventAction` |
+| `input` | `type` (an `InputEvent` class), `properties` | queues the event; key properties accept names like `"Space"` |
+| `capture` | | `{width, height, png}` (base64) of the main viewport |
+
+The channel is serviced when the SceneTree emits `process_frame`. A held game
+stops there: physics for that frame has run, `_process` has not. Input sent
+while held is delivered at the start of the next frame, like device input, so
+`step` after `input` is frame-exact. If the last client disconnects while the
+game is held, it resumes. Errors use JSON-RPC codes: `-32700` parse, `-32600`
+request, `-32601` method, `-32602` params, `-32001` node not found, `-32002`
+call failed, `-32003` nothing to capture (the dummy renderer never draws; use
+`--offscreen`).
+
+`godot_testing/control.py` is a small Python client:
+
+```python
+from godot_testing.control import ControlClient
+with ControlClient.connect(port) as game:
+    game.step(10)
+    game.key("Space")
+    game.step()
+    score = game.get("/root/Main/Hud", "score")
+    game.capture().image()
+```
