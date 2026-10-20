@@ -35,12 +35,18 @@ def wall_clocked(tmp_path: Path) -> Iterator[ControlClient]:
     yield from _game(tmp_path, [])
 
 
-def test_audio_advances_exactly_with_frames(frame_clocked: ControlClient) -> None:
+# The audio server mixes in whole blocks, so a stream's raw position moves in block steps.
+MIX_BLOCK = 512 / 44100
+# Latency is a float: exact to the sample.
+SAMPLE = 0.5 / 44100
+
+
+def test_audio_position_keeps_to_frames_without_drift(frame_clocked: ControlClient) -> None:
     start = frame_clocked.call("/root/Main", "audio_position")
     frame_clocked.step(60)
-    assert frame_clocked.call("/root/Main", "audio_position") - start == pytest.approx(1.0, abs=1e-9)
-    frame_clocked.step(15)
-    assert frame_clocked.call("/root/Main", "audio_position") - start == pytest.approx(1.25, abs=1e-9)
+    assert frame_clocked.call("/root/Main", "audio_position") - start == pytest.approx(1.0, abs=MIX_BLOCK)
+    frame_clocked.step(240)
+    assert frame_clocked.call("/root/Main", "audio_position") - start == pytest.approx(5.0, abs=MIX_BLOCK)
 
 
 def test_audio_is_still_while_the_game_is_held(frame_clocked: ControlClient) -> None:
@@ -53,7 +59,9 @@ def test_audio_sync_formula_tracks_frames(frame_clocked: ControlClient) -> None:
     # position + time_since_last_mix - output_latency is the documented way to sync to audio.
     start = frame_clocked.call("/root/Main", "audio_sync_time")
     frame_clocked.step(30)
-    assert frame_clocked.call("/root/Main", "audio_sync_time") - start == pytest.approx(0.5, abs=1e-9)
+    assert frame_clocked.call("/root/Main", "audio_sync_time") - start == pytest.approx(0.5, abs=SAMPLE)
+    frame_clocked.step(15)
+    assert frame_clocked.call("/root/Main", "audio_sync_time") - start == pytest.approx(0.75, abs=SAMPLE)
 
 
 def test_without_fixed_fps_audio_follows_the_wall_clock(wall_clocked: ControlClient) -> None:

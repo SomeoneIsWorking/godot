@@ -139,8 +139,12 @@ void AudioDriverDummy::_mix(uint32_t p_frames, int32_t *p_buffer) {
 }
 
 float AudioDriverDummy::get_latency() {
-	// The latest mix covers the frame being processed; its start is what is audible now.
-	return frame_clocked ? float(last_mix_frames) / mix_rate : 0.0f;
+	if (!frame_clocked) {
+		return 0.0f;
+	}
+	// The server mixes in whole blocks, so streams run ahead of the frames played; the start of this frame's audio is audible now.
+	const uint64_t ahead = AudioServer::get_singleton()->get_mixed_frames() - mixed_frames;
+	return float(ahead + last_mix_frames) / mix_rate;
 }
 
 double AudioDriverDummy::get_time_since_last_mix() {

@@ -507,6 +507,8 @@ Error EGLManager::initialize(void *p_native_display) {
 		}
 		tmp_display = eglGetPlatformDisplayEXT(_get_platform_extension_enum(), p_native_display, attribs.ptr());
 #endif // EGL_EXT_platform_base
+	} else if (_is_platform_extension_required()) {
+		ERR_FAIL_V_MSG(ERR_UNAVAILABLE, vformat("EGL: %s is required, but this EGL implementation has no EGL_EXT_platform_base to reach it with.", _get_platform_extension_name()));
 	} else {
 		WARN_PRINT("EGL: EGL_EXT_platform_base not found during init, using default platform.");
 		EGLNativeDisplayType *native_display_type = (EGLNativeDisplayType *)p_native_display;

@@ -28,11 +28,10 @@ def test_runs_repeat_frame_for_frame() -> None:
 def test_frame_time_starts_at_the_epoch_and_advances_per_frame() -> None:
     _, last = trace(DETERMINISTIC)
     ticks, unix_time, _, datetime = last.split(" ")[:4]
-    frame = int(ticks) * 60 // 1_000_000
-    assert int(ticks) in (frame * 1_000_000 // 60, (frame + 1) * 1_000_000 // 60)
-    assert 120 <= frame <= 125
-    assert 946684800 <= int(unix_time) <= 946684800 + 3
-    assert datetime.startswith("2000-01-01T00:00:0")
+    # The first frame reads 0, so the 120th reads 119 frames.
+    assert int(ticks) == 119 * 1_000_000 // 60
+    assert int(unix_time) == 946684800 + 1
+    assert datetime == "2000-01-01T00:00:01"
 
 
 def test_a_different_seed_changes_the_run() -> None:

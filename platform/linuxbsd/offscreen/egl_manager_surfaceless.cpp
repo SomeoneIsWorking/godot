@@ -42,6 +42,10 @@ const char *EGLManagerSurfaceless::_get_platform_extension_name() const {
 	return "EGL_MESA_platform_surfaceless";
 }
 
+bool EGLManagerSurfaceless::_is_platform_extension_required() const {
+	return true;
+}
+
 EGLenum EGLManagerSurfaceless::_get_platform_extension_enum() const {
 	return EGL_PLATFORM_SURFACELESS_MESA;
 }

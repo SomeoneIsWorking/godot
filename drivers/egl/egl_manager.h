@@ -75,6 +75,8 @@ private:
 	bool use_vsync = true;
 
 	virtual const char *_get_platform_extension_name() const = 0;
+	// A manager with no native display (offscreen) has no default platform to fall back to.
+	virtual bool _is_platform_extension_required() const { return false; }
 	virtual EGLenum _get_platform_extension_enum() const = 0;
 	virtual EGLenum _get_platform_api_enum() const = 0;
 	virtual Vector<EGLAttrib> _get_platform_display_attributes() const = 0;

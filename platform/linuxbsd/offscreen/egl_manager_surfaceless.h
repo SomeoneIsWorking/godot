@@ -46,6 +46,7 @@ public:
 	virtual Vector<EGLAttrib> _get_platform_display_attributes() const override;
 	virtual Vector<EGLint> _get_platform_context_attribs() const override;
 	virtual EGLint _get_platform_surface_type() const override;
+	virtual bool _is_platform_extension_required() const override;
 };
 
 #endif // GLES3_ENABLED

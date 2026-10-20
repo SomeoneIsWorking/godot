@@ -125,12 +125,15 @@ clock. If the `Dummy` audio driver is selected (`--audio-driver Dummy`, or
 exactly the audio that plays during that frame (`process_step × mix_rate`,
 carrying fractions so nothing drifts). As a result:
 
-- `AudioStreamPlayer.get_playback_position()` advances by exactly 1/fps per
-  frame and stands still while the game is held by the control channel.
-- `AudioServer.get_time_since_last_mix()` is `0`, and `get_output_latency()`
-  and `get_time_to_next_mix()` are one frame's audio, so the usual sync formula
+- `AudioStreamPlayer.get_playback_position()` keeps to frame time without
+  drift and stands still while the game is held by the control channel. The
+  audio server mixes in whole blocks (512 frames), so the raw position moves in
+  block steps and runs up to one block ahead.
+- `AudioServer.get_time_since_last_mix()` is `0`, `get_time_to_next_mix()` is
+  one frame's audio, and `get_output_latency()` is one frame's audio plus what
+  the server has mixed ahead, so the usual sync formula
   (`position + time_since_last_mix - output_latency`) gives the frame's start
-  time.
+  time to the sample.
 - `finished` signals, `AudioEffectCapture`, spectrum analyzers and anything
   else fed by the mixer see audio at the frame rate, however fast the frames
   run.
