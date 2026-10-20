@@ -289,6 +289,7 @@ static int fixed_fps = -1;
 static bool use_frame_time = false;
 static MovieWriter *movie_writer = nullptr;
 static bool disable_vsync = false;
+static bool hidden_window = false;
 static bool print_fps = false;
 #ifdef TOOLS_ENABLED
 static bool editor_pseudolocalization = false;
@@ -631,6 +632,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
 	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
+	print_help_option("--hidden-window", "Create the main window but never show it (X11 only). It renders as a shown window does; vsync is off and alerts are printed instead of shown.\n");
 	print_help_option("--offscreen", "Render without a display or window (--display-driver offscreen). Frames are rendered by the GPU as in a windowed run, but never shown.\n");
 	print_help_option("--log-file <file>", "Write output/error log to the specified path instead of the default location defined by the project.\n");
 	print_help_option("", "<file> path should be absolute or relative to the project directory.\n");
@@ -1520,6 +1522,12 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 			audio_driver = NULL_AUDIO_DRIVER;
 			display_driver = NULL_DISPLAY_DRIVER;
+
+		} else if (arg == "--hidden-window") { // Render in a window that is never mapped.
+
+			hidden_window = true;
+			disable_vsync = true;
+			OS::get_singleton()->set_alerts_printed(true);
 
 		} else if (arg == "--offscreen") { // Render real frames without a display or window.
 
@@ -3453,6 +3461,12 @@ Error Main::setup2(bool p_show_boot_logo) {
 			}
 		}
 
+		// Only X11 keeps rendering a window that was never mapped.
+		if (hidden_window && err == OK && display_server != nullptr && display_server->get_name() != "X11") {
+			ERR_PRINT(vformat("--hidden-window needs the X11 display server (--display-driver x11), not %s.", display_server->get_name()));
+			err = ERR_UNAVAILABLE;
+		}
+
 		if (err != OK || display_server == nullptr) {
 			ERR_PRINT("Unable to create DisplayServer, all display drivers failed.\nUse \"--headless\" command line argument to run the engine in headless mode if this is desired (e.g. for continuous integration).");
 
@@ -3522,7 +3536,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 			}
 		}
 #endif
-		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS)) {
+		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS) && !hidden_window) {
 			display_server->show_window(DisplayServerEnums::MAIN_WINDOW_ID);
 		}
 

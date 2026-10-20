@@ -103,6 +103,11 @@
 #endif
 
 void OS_LinuxBSD::alert(const String &p_alert, const String &p_title) {
+	if (are_alerts_printed()) {
+		OS::alert(p_alert, p_title);
+		return;
+	}
+
 	const char *message_programs[] = { "zenity", "kdialog", "Xdialog", "xmessage" };
 
 	String path = get_environment("PATH");

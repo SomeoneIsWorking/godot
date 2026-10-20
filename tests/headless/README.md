@@ -12,6 +12,25 @@ cd tests/headless
 uv run --locked pytest
 ```
 
+## Hidden window (`--hidden-window`)
+
+`--hidden-window` runs a game on the user's own desktop session without ever showing
+it: the X11 display server creates the main window as usual but never maps it.
+
+```sh
+godot --path game --hidden-window --write-movie scratch/run/f.png --fixed-fps 30 --quit-after 70
+```
+
+- The window exists (input, sizes, `DisplayServer` queries all behave as in a shown
+  run) and renders every frame, because X11 only stops drawing a minimized window.
+  Capture frames with the movie writer or the viewport texture.
+- Vsync is off (`--disable-vsync`), so frames never wait on a display.
+- `OS.alert()` prints `<title>: <message>` to stderr instead of opening a dialog.
+- X11 only (on a Wayland session it runs through XWayland). Any other display
+  server ends the run with an error naming it; the Wayland server only creates its
+  surface when the window is shown.
+- Subwindows that are not embedded are shown as usual.
+
 ## Offscreen rendering (`--offscreen`)
 
 `--offscreen` (same as `--display-driver offscreen`, Linux only) creates a display

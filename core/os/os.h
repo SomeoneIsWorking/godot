@@ -100,6 +100,7 @@ private:
 	CompositeLogger *_logger = nullptr;
 
 	bool restart_on_exit = false;
+	bool alerts_printed = false;
 	List<String> restart_commandline;
 
 	String _current_rendering_driver_name;
@@ -188,6 +189,9 @@ public:
 	virtual Rect2 calculate_boot_screen_rect(const Size2 &p_window_size, const Size2 &p_imgrect_size) const;
 
 	virtual void alert(const String &p_alert, const String &p_title = "ALERT!");
+	// Platform alerts print to stderr instead of opening a dialog.
+	void set_alerts_printed(bool p_printed) { alerts_printed = p_printed; }
+	bool are_alerts_printed() const { return alerts_printed; }
 
 	struct GDExtensionData {
 		bool also_set_library_path = false;
