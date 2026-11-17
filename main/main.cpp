@@ -5101,11 +5101,11 @@ bool Main::iteration() {
 		uint64_t navigation_begin = OS::get_singleton()->get_ticks_usec();
 
 #ifndef NAVIGATION_2D_DISABLED
-		GodotProfileZoneGrouped(_profile_zone, "NavigationServer2D::physics_process");
+		GodotProfileZoneGrouped(_physics_zone, "NavigationServer2D::physics_process");
 		NavigationServer2D::get_singleton()->physics_process(physics_step * time_scale);
 #endif // NAVIGATION_2D_DISABLED
 #ifndef NAVIGATION_3D_DISABLED
-		GodotProfileZoneGrouped(_profile_zone, "NavigationServer3D::physics_process");
+		GodotProfileZoneGrouped(_physics_zone, "NavigationServer3D::physics_process");
 		NavigationServer3D::get_singleton()->physics_process(physics_step * time_scale);
 #endif // NAVIGATION_3D_DISABLED
 
@@ -5116,20 +5116,20 @@ bool Main::iteration() {
 #endif // !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
 
 #ifndef PHYSICS_3D_DISABLED
-		GodotProfileZoneGrouped(_profile_zone, "3D physics");
+		GodotProfileZoneGrouped(_physics_zone, "3D physics");
 		PhysicsServer3D::get_singleton()->end_sync();
 		PhysicsServer3D::get_singleton()->step(physics_step * time_scale);
 #endif // PHYSICS_3D_DISABLED
 
 #ifndef PHYSICS_2D_DISABLED
-		GodotProfileZoneGrouped(_profile_zone, "2D physics");
+		GodotProfileZoneGrouped(_physics_zone, "2D physics");
 		PhysicsServer2D::get_singleton()->end_sync();
 		PhysicsServer2D::get_singleton()->step(physics_step * time_scale);
 #endif // PHYSICS_2D_DISABLED
 
 		message_queue->flush();
 
-		GodotProfileZoneGrouped(_profile_zone, "main loop iteration end");
+		GodotProfileZoneGrouped(_physics_zone, "main loop iteration end");
 		OS::get_singleton()->get_main_loop()->iteration_end();
 
 		physics_process_ticks = MAX(physics_process_ticks, OS::get_singleton()->get_ticks_usec() - physics_begin); // keep the largest one for reference
