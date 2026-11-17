@@ -15,6 +15,8 @@ def profiler_gen_builder(target, source, env):
                 file.write("#define TRACY_ON_DEMAND\n")
         if env["profiler"] == "perfetto":
             file.write("#define GODOT_USE_PERFETTO\n")
+        if env["profiler"] == "perf_units":
+            file.write("#define GODOT_USE_PERF_UNITS\n")
         if env["profiler"] == "instruments":
             file.write("#define GODOT_USE_INSTRUMENTS\n")
             if env["profiler_sample_callstack"]:

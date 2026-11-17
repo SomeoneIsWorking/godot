@@ -47,7 +47,11 @@ def find_tracy_path(path: pathlib.Path) -> pathlib.Path:
 
 
 if env["profiler"]:
-    if env["profiler"] == "instruments":
+    if env["profiler"] == "perf_units":
+        if env["platform"] == "windows":
+            print("The perf_units profiler counts with perf_event_open or the POSIX thread CPU clock; Windows has neither. Aborting.")
+            Exit(255)
+    elif env["profiler"] == "instruments":
         if env["profiler_sample_callstack"]:
             print("profiler_sample_callstack ignored. Please configure callstack sampling in Instruments instead.")
         if env["profiler_track_memory"]:

@@ -185,3 +185,30 @@ What is not:
   timestamps, and hardware input.
 - Rendering across different GPUs, drivers or engine builds, and GPU-driven
   effects that read timers.
+
+## Engine cost per zone (`profiler=perf_units`)
+
+Counts the engine's own profiling zones (`GodotProfileZone` and the grouped and script zones Tracy
+and Perfetto use) in user-space instructions retired, which host load does not move, so a game's
+`[perf]` lines can sit next to the engine work they cause. Linux only; it
+needs `kernel.perf_event_paranoid` 2 or lower.
+
+It is a separate build; the shipped binary has no zones. Build it beside the usual editor with its
+own suffix so neither overwrites the other, and rebuild it after pulling the fork:
+
+```sh
+scons platform=linuxbsd target=editor use_llvm=yes module_mono_enabled=yes optimize=speed_trace \
+  redirect_build_objects=yes use_static_cpp=no profiler=perf_units extra_suffix=perfunits
+```
+
+`GODOT_PERF_ZONES=<frames>` turns counting on after that many warm-up frames; unset, each zone costs
+one branch. At exit it prints, for every zone that ran:
+
+```
+[perf] engine run-end: <frames> frames, user instructions retired; self excludes nested zones
+[perf] engine <zone> self: p50 .. p99 .. max .. insn/call, total .. insn
+[perf] engine <zone> inclusive|per frame|calls: ...
+```
+
+Each thread counts on its own counter; a zone's name is its profiling label (`::` becomes `.`),
+and script functions are `script <name>`. Code is `core/profiling/perf_zones.*`.

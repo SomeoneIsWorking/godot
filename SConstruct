@@ -204,7 +204,7 @@ opts.Add(BoolVariable("angle", "Enable the ANGLE rendering driver for OpenGL ES 
 opts.Add(BoolVariable("sdl", "Enable the SDL3 input driver", True))
 opts.Add(
     EnumVariable(
-        "profiler", "Specify the profiler to use", "none", ["none", "tracy", "perfetto", "instruments"], ignorecase=2
+        "profiler", "Specify the profiler to use", "none", ["none", "tracy", "perfetto", "instruments", "perf_units"], ignorecase=2
     )
 )
 opts.Add(("profiler_path", "Path to the Profiler framework.", ""))

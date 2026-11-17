@@ -238,6 +238,33 @@ private:
 void godot_init_profiler();
 void godot_cleanup_profiler();
 
+#elif defined(GODOT_USE_PERF_UNITS)
+// Count user-space instructions retired per zone; see perf_zones.h.
+
+#include "core/profiling/perf_zones.h"
+
+// Registers a zone name once per call site.
+#define _GODOT_PERF_ZONE_ID(m_zone_name) ([]() { \
+	static const uint32_t __godot_perf_zone_id = PerfZones::register_zone(m_zone_name); \
+	return __godot_perf_zone_id; \
+}())
+
+#define GodotProfileFrameMark PerfZones::frame_mark();
+#define GodotProfileZone(m_zone_name) PerfZoneScope GD_UNIQUE_NAME(__godot_perf_zone_)(_GODOT_PERF_ZONE_ID(m_zone_name))
+#define GodotProfileZoneGroupedFirst(m_group_name, m_zone_name) PerfZoneScope __godot_perf_zone_##m_group_name(_GODOT_PERF_ZONE_ID(m_zone_name))
+#define GodotProfileZoneGroupedEndEarly(m_group_name, m_zone_name) __godot_perf_zone_##m_group_name.end_now()
+#define GodotProfileZoneGrouped(m_group_name, m_zone_name) __godot_perf_zone_##m_group_name.next(_GODOT_PERF_ZONE_ID(m_zone_name))
+#define GodotProfileZoneScript(m_ptr, m_file, m_function, m_name, m_line) \
+	PerfZoneScope __godot_perf_script(PerfZones::counting.load(std::memory_order_relaxed) ? PerfZones::register_script(m_name, false) : 0)
+#define GodotProfileZoneScriptSystemCall(m_ptr, m_file, m_function, m_name, m_line) \
+	PerfZoneScope __godot_perf_script_call(PerfZones::counting.load(std::memory_order_relaxed) ? PerfZones::register_script(m_name, true) : 0)
+
+#define GodotProfileAlloc(m_ptr, m_size)
+#define GodotProfileFree(m_ptr)
+
+void godot_init_profiler();
+void godot_cleanup_profiler();
+
 #else
 // No profiling; all macros are stubs.
 

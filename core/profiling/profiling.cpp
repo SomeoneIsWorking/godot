@@ -236,6 +236,16 @@ void godot_init_profiler() {
 void godot_cleanup_profiler() {
 }
 
+#elif defined(GODOT_USE_PERF_UNITS)
+
+void godot_init_profiler() {
+	PerfZones::init();
+}
+
+void godot_cleanup_profiler() {
+	PerfZones::report();
+}
+
 #else
 void godot_init_profiler() {
 	// Stub
