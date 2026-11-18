@@ -107,8 +107,13 @@ void RenderingDeviceWorkCounts::_collect(Slot &p_slot) {
 	for (int s = 0; s < STATISTIC_MAX; s++) {
 		statistics[s].add(totals[s]);
 	}
-	last_passes = String();
-	for (uint32_t i = 0; i < p_slot.passes.size(); i++) {
+	// The report lists the passes of the present with the most of them, the latest of those.
+	const bool list_passes = p_slot.passes.size() >= most_passes;
+	most_passes = MAX(most_passes, p_slot.passes.size());
+	if (list_passes) {
+		last_passes = String();
+	}
+	for (uint32_t i = 0; list_passes && i < p_slot.passes.size(); i++) {
 		const Pass &pass = p_slot.passes[i];
 		uint64_t fragments = 0;
 		HashMap<uint32_t, uint64_t> by_shader;
@@ -124,7 +129,7 @@ void RenderingDeviceWorkCounts::_collect(Slot &p_slot) {
 				most = shaders[E.key]->name;
 			}
 		}
-		last_passes += vformat("[perf] gpu pass %d: %dx%d, %d draws, %d px shaded, most by %s\n", i, pass.size.x, pass.size.y, pass.draws, fragments, most);
+		last_passes += vformat("[perf] gpu pass %d of the present with the most: %dx%d, %d draws, %d px shaded, most by %s\n", i, pass.size.x, pass.size.y, pass.draws, fragments, most);
 	}
 	for (Shader *shader : shaders) {
 		shader->fragments.add(shader->frame_fragments);

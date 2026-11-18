@@ -119,7 +119,8 @@ private:
 	CountHistogram draws;
 	CountHistogram pipeline_binds;
 	String shader_dump_dir;
-	String last_passes; // The last counted present's passes, for the report.
+	String last_passes; // The passes of the present with the most, for the report.
+	uint32_t most_passes = 0;
 
 	bool _counting() const;
 	uint32_t _shader_index(const String &p_name);
