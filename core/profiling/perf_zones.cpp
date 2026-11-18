@@ -34,6 +34,7 @@
 
 #include "perf_zones.h"
 
+#include "core/profiling/count_histogram.h"
 #include "core/string/string_name.h"
 #include "core/templates/hash_map.h"
 
@@ -58,63 +59,12 @@ namespace {
 constexpr uint32_t MAX_ZONES = 1024;
 constexpr uint32_t MAX_DEPTH = 64;
 
-// Constant-memory percentiles: exact below 64, then 64 buckets per
-// power of two (at most 1.6% high); max and total exact.
-class Histogram {
-	static constexpr unsigned SUB_BITS = 6;
-	static constexpr uint64_t SUB = uint64_t(1) << SUB_BITS;
-	static constexpr size_t BUCKETS = SUB + (64 - SUB_BITS) * SUB;
-	uint32_t buckets[BUCKETS] = {};
-
-	static size_t bucket_of(uint64_t p_value) {
-		if (p_value < SUB) {
-			return size_t(p_value);
-		}
-		const unsigned shift = unsigned(63 - __builtin_clzll(p_value)) - SUB_BITS;
-		return SUB + shift * SUB + size_t((p_value >> shift) - SUB);
-	}
-	static uint64_t bucket_top(size_t p_bucket) {
-		if (p_bucket < SUB) {
-			return p_bucket;
-		}
-		const size_t shift = (p_bucket - SUB) / SUB;
-		const uint64_t mantissa = SUB + (p_bucket - SUB) % SUB;
-		return ((mantissa + 1) << shift) - 1;
-	}
-
-public:
-	uint64_t count = 0;
-	uint64_t total = 0;
-	uint64_t max = 0;
-
-	void add(uint64_t p_value) {
-		buckets[bucket_of(p_value)]++;
-		count++;
-		total += p_value;
-		max = MAX(max, p_value);
-	}
-	uint64_t percentile(double p_fraction) const {
-		if (count == 0) {
-			return 0;
-		}
-		const uint64_t rank = MAX(uint64_t(1), uint64_t(p_fraction * double(count) + 0.999999));
-		uint64_t seen = 0;
-		for (size_t i = 0; i < BUCKETS; i++) {
-			seen += buckets[i];
-			if (seen >= rank) {
-				return MIN(bucket_top(i), max);
-			}
-		}
-		return max;
-	}
-};
-
 struct Zone {
 	char name[96] = {};
-	Histogram self;
-	Histogram inclusive;
-	Histogram per_frame;
-	Histogram calls;
+	CountHistogram self;
+	CountHistogram inclusive;
+	CountHistogram per_frame;
+	CountHistogram calls;
 	std::atomic<uint64_t> frame_self{ 0 };
 	std::atomic<uint64_t> frame_calls{ 0 };
 };
@@ -226,10 +176,10 @@ uint64_t read_work(ThreadState &p_state) {
 	return total;
 }
 
-void print_line_for(const char *p_zone, const char *p_what, const Histogram &p_work, const char *p_unit, const char *p_per) {
-	printf("[perf] engine %s %s: p50 %llu p99 %llu max %llu %s/%s, total %llu %s\n", p_zone, p_what,
-			(unsigned long long)p_work.percentile(0.5), (unsigned long long)p_work.percentile(0.99),
-			(unsigned long long)p_work.max, p_unit, p_per, (unsigned long long)p_work.total, p_unit);
+void print_line_for(const char *p_zone, const char *p_what, const CountHistogram &p_work, const char *p_unit, const char *p_per) {
+	char name[160];
+	snprintf(name, sizeof(name), "engine %s %s", p_zone, p_what);
+	p_work.print(name, p_unit, p_per);
 }
 
 } // namespace
