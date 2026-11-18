@@ -504,6 +504,8 @@ public:
 	};
 
 	virtual void canvas_render_items(RID p_to_render_target, Item *p_item_list, const Color &p_modulate, Light *p_light_list, Light *p_directional_list, const Transform2D &p_canvas_transform, RSE::CanvasItemTextureFilter p_default_filter, RSE::CanvasItemTextureRepeat p_default_repeat, bool p_snap_2d_vertices_to_pixel, bool &r_sdf_used, RenderingServerTypes::RenderInfo *r_render_info = nullptr) = 0;
+	// Ends a viewport's canvas layers: whatever canvas_render_items held back is drawn now.
+	virtual void canvas_render_finish() {}
 
 	struct LightOccluderInstance {
 		bool enabled : 1;

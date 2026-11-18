@@ -530,6 +530,8 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 		float msdf_outline = 0.0;
 
 		Item *clip = nullptr;
+		/// Canvas layer of a merged pass whose state this batch draws with.
+		uint32_t merged_layer = 0;
 
 		RID material;
 		CanvasMaterialData *material_data = nullptr;
@@ -644,6 +646,21 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 
 	} state;
 
+	// Canvas layers that read nothing drawn before them share one render pass: their batches are
+	// held until a layer that reads the target, another target, or the viewport's end.
+	static constexpr uint32_t MAX_MERGED_LAYERS = 16;
+	struct MergedPass {
+		RID render_target;
+		bool use_linear_colors = false;
+		RenderingServerTypes::RenderInfo *render_info = nullptr;
+		uint32_t layer_count = 0;
+		State::Buffer layer_states[MAX_MERGED_LAYERS];
+		RID layer_state_buffers[MAX_MERGED_LAYERS];
+		// Base uniform sets per render target, one per layer state buffer.
+		HashMap<RID, LocalVector<RID>> base_uniform_sets;
+	} merged_pass;
+	bool recording_merged_layer = false;
+
 	Item *items[MAX_RENDER_ITEMS];
 
 	TextureInfo default_texture_info;
@@ -659,7 +676,7 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 	RSE::CanvasItemTextureFilter default_filter = RSE::CANVAS_ITEM_TEXTURE_FILTER_LINEAR;
 	RSE::CanvasItemTextureRepeat default_repeat = RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED;
 
-	RID _create_base_uniform_set(RID p_to_render_target, bool p_backbuffer);
+	RID _create_base_uniform_set(RID p_to_render_target, bool p_backbuffer, RID p_state_buffer = RID());
 
 	bool debug_redraw = false;
 	Color debug_redraw_color;
@@ -674,6 +691,11 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 
 	inline RID _get_pipeline_specialization_or_ubershader(CanvasShaderData *p_shader_data, PipelineKey &r_pipeline_key, PushConstant &r_push_constant, RID p_mesh_instance = RID(), void *p_surface = nullptr, uint32_t p_surface_index = 0, RID *r_vertex_array = nullptr);
 	void _render_batch_items(RenderTarget p_to_render_target, int p_item_count, const Transform2D &p_canvas_transform_inverse, Light *p_lights, bool &r_sdf_used, bool p_to_backbuffer = false, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
+	bool _layer_reads_nothing_drawn(const Item *p_item_list) const;
+	RID _get_merged_layer_uniform_set(RID p_render_target, uint32_t p_layer);
+	void _submit_merged_pass();
+	void _finish_instance_upload();
+	void _submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info);
 	void _record_item_commands(const Item *p_item, RenderTarget p_render_target, const Transform2D &p_base_transform, Item *&r_current_clip, Light *p_lights, bool &r_batch_broken, bool &r_sdf_used, Batch *&r_current_batch);
 	void _render_batch(RD::DrawListID p_draw_list, CanvasShaderData *p_shader_data, RenderingDevice::FramebufferFormatID p_framebuffer_format, Light *p_lights, Batch const *p_batch, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
 	void _prepare_batch_texture_info(RID p_texture, TextureState &p_state, TextureInfo *p_info);
@@ -710,6 +732,7 @@ public:
 	void occluder_polygon_set_cull_mode(RID p_occluder, RSE::CanvasOccluderPolygonCullMode p_mode) override;
 
 	void canvas_render_items(RID p_to_render_target, Item *p_item_list, const Color &p_modulate, Light *p_light_list, Light *p_directional_light_list, const Transform2D &p_canvas_transform, RSE::CanvasItemTextureFilter p_default_filter, RSE::CanvasItemTextureRepeat p_default_repeat, bool p_snap_2d_vertices_to_pixel, bool &r_sdf_used, RenderingServerTypes::RenderInfo *r_render_info = nullptr) override;
+	void canvas_render_finish() override;
 
 	virtual void set_shadow_texture_size(int p_size) override;
 

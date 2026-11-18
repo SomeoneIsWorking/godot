@@ -720,6 +720,7 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 			}
 
 			if (scenario_draw_canvas_bg && E.key.get_layer() >= scenario_canvas_max_layer) {
+				RSG::canvas_render->canvas_render_finish();
 				// There may be an outstanding clear request if a clear was requested, but no 2D elements were drawn.
 				// Clear now otherwise we copy over garbage from the render target.
 				RSG::texture_storage->render_target_do_clear_request(p_viewport->render_target);
@@ -734,6 +735,8 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 
 			canvas_idx++;
 		}
+
+		RSG::canvas_render->canvas_render_finish();
 
 		if (scenario_draw_canvas_bg) {
 			// There may be an outstanding clear request if a clear was requested, but no 2D elements were drawn.

@@ -376,7 +376,7 @@ _FORCE_INLINE_ static uint32_t _indices_to_primitives(RSE::PrimitiveType p_primi
 	return (p_indices - subtractor[p_primitive]) / divisor[p_primitive];
 }
 
-RID RendererCanvasRenderRD::_create_base_uniform_set(RID p_to_render_target, bool p_backbuffer) {
+RID RendererCanvasRenderRD::_create_base_uniform_set(RID p_to_render_target, bool p_backbuffer, RID p_state_buffer) {
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 	RendererRD::MaterialStorage *material_storage = RendererRD::MaterialStorage::get_singleton();
 
@@ -388,7 +388,7 @@ RID RendererCanvasRenderRD::_create_base_uniform_set(RID p_to_render_target, boo
 		RD::Uniform u;
 		u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
 		u.binding = 1;
-		u.append_id(state.canvas_state_buffer);
+		u.append_id(p_state_buffer.is_valid() ? p_state_buffer : state.canvas_state_buffer);
 		uniforms.push_back(u);
 	}
 
@@ -461,6 +461,9 @@ RID RendererCanvasRenderRD::_create_base_uniform_set(RID p_to_render_target, boo
 	material_storage->samplers_rd_get_default().append_uniforms(uniforms, SAMPLERS_BINDING_FIRST_INDEX);
 
 	RID uniform_set = RD::get_singleton()->uniform_set_create(uniforms, shader.default_version_rd_shader, BASE_UNIFORM_SET);
+	if (p_state_buffer.is_valid()) {
+		return uniform_set;
+	}
 	if (p_backbuffer) {
 		texture_storage->render_target_set_backbuffer_uniform_set(p_to_render_target, uniform_set);
 	} else {
@@ -468,6 +471,86 @@ RID RendererCanvasRenderRD::_create_base_uniform_set(RID p_to_render_target, boo
 	}
 
 	return uniform_set;
+}
+
+bool RendererCanvasRenderRD::_layer_reads_nothing_drawn(const Item *p_item_list) const {
+	RendererRD::MaterialStorage *material_storage = RendererRD::MaterialStorage::get_singleton();
+	for (const Item *ci = p_item_list; ci; ci = ci->next) {
+		if (ci->copy_back_buffer || ci->canvas_group || ci->canvas_group_owner) {
+			return false;
+		}
+		RID material = ci->material_owner == nullptr ? ci->material : ci->material_owner->material;
+		if (material.is_valid()) {
+			const CanvasMaterialData *md = static_cast<CanvasMaterialData *>(material_storage->material_get_data(material, RendererRD::MaterialStorage::SHADER_TYPE_2D));
+			if (md && md->shader_data->is_valid() && md->shader_data->uses_screen_texture) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+RID RendererCanvasRenderRD::_get_merged_layer_uniform_set(RID p_render_target, uint32_t p_layer) {
+	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
+	LocalVector<RID> *sets = merged_pass.base_uniform_sets.getptr(p_render_target);
+	if (sets == nullptr) {
+		// Forget render targets that are gone; their uniform sets went with their textures.
+		LocalVector<RID> gone;
+		for (const KeyValue<RID, LocalVector<RID>> &E : merged_pass.base_uniform_sets) {
+			if (!texture_storage->owns_render_target(E.key)) {
+				gone.push_back(E.key);
+			}
+		}
+		for (const RID &rt : gone) {
+			merged_pass.base_uniform_sets.erase(rt);
+		}
+		sets = &merged_pass.base_uniform_sets.insert(p_render_target, LocalVector<RID>())->value;
+	}
+	if (sets->size() <= p_layer) {
+		sets->resize(p_layer + 1);
+	}
+	RID &set = (*sets)[p_layer];
+	if (set.is_null() || !RD::get_singleton()->uniform_set_is_valid(set)) {
+		set = _create_base_uniform_set(p_render_target, false, merged_pass.layer_state_buffers[p_layer]);
+	}
+	return set;
+}
+
+void RendererCanvasRenderRD::_finish_instance_upload() {
+	texture_info_map.clear();
+
+	// Save the previous instance data pointer in case more items are rendered in the same frame.
+	state.prev_instance_data = state.instance_data;
+	state.prev_instance_data_index = state.instance_data_index;
+
+	state.instance_data = nullptr;
+	if (state.instance_data_index > 0) {
+		// If there was any remaining instance data, it must be flushed.
+		RID buf = state.instance_buffers._get(0);
+		RD::get_singleton()->buffer_flush(buf);
+		state.instance_data_index = 0;
+	}
+}
+
+void RendererCanvasRenderRD::_submit_merged_pass() {
+	if (merged_pass.layer_count == 0) {
+		return;
+	}
+	for (uint32_t i = 0; i < merged_pass.layer_count; i++) {
+		RD::get_singleton()->buffer_update(merged_pass.layer_state_buffers[i], 0, sizeof(State::Buffer), &merged_pass.layer_states[i]);
+	}
+	RenderTarget to_render_target;
+	to_render_target.render_target = merged_pass.render_target;
+	to_render_target.use_linear_colors = merged_pass.use_linear_colors;
+	_submit_batches(to_render_target, false, true, merged_pass.render_info);
+	merged_pass.layer_count = 0;
+	merged_pass.render_target = RID();
+	merged_pass.render_info = nullptr;
+	_finish_instance_upload();
+}
+
+void RendererCanvasRenderRD::canvas_render_finish() {
+	_submit_merged_pass();
 }
 
 RID RendererCanvasRenderRD::_get_pipeline_specialization_or_ubershader(CanvasShaderData *p_shader_data, PipelineKey &r_pipeline_key, PushConstant &r_push_constant, RID p_mesh_instance, void *p_surface, uint32_t p_surface_index, RID *r_vertex_array) {
@@ -513,6 +596,11 @@ void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p
 
 	r_sdf_used = false;
 	int item_count = 0;
+
+	const bool merge = p_light_list == nullptr && p_directional_light_list == nullptr && _layer_reads_nothing_drawn(p_item_list);
+	if (!merge || merged_pass.render_target != p_to_render_target || merged_pass.layer_count == MAX_MERGED_LAYERS) {
+		_submit_merged_pass();
+	}
 
 	//setup canvas state uniforms if needed
 
@@ -729,7 +817,14 @@ void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p
 
 		state_buffer.flags = use_linear_colors ? CANVAS_FLAGS_CONVERT_ATTRIBUTES_TO_LINEAR : 0;
 
-		RD::get_singleton()->buffer_update(state.canvas_state_buffer, 0, sizeof(State::Buffer), &state_buffer);
+		if (merge) {
+			merged_pass.render_target = p_to_render_target;
+			merged_pass.use_linear_colors = use_linear_colors;
+			merged_pass.render_info = r_render_info;
+			merged_pass.layer_states[merged_pass.layer_count++] = state_buffer;
+		} else {
+			RD::get_singleton()->buffer_update(state.canvas_state_buffer, 0, sizeof(State::Buffer), &state_buffer);
+		}
 	}
 
 	{ //default filter/repeat
@@ -758,6 +853,7 @@ void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p
 	RenderTarget to_render_target;
 	to_render_target.render_target = p_to_render_target;
 	to_render_target.use_linear_colors = use_linear_colors;
+	recording_merged_layer = merge;
 
 	while (ci) {
 		if (ci->copy_back_buffer && canvas_group_owner == nullptr) {
@@ -911,22 +1007,14 @@ void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p
 		ci = ci->next;
 	}
 
+	recording_merged_layer = false;
+
 	if (time_used) {
 		RenderingServerDefault::redraw_request();
 	}
 
-	texture_info_map.clear();
-
-	// Save the previous instance data pointer in case more items are rendered in the same frame.
-	state.prev_instance_data = state.instance_data;
-	state.prev_instance_data_index = state.instance_data_index;
-
-	state.instance_data = nullptr;
-	if (state.instance_data_index > 0) {
-		// If there was any remaining instance data, it must be flushed.
-		RID buf = state.instance_buffers._get(0);
-		RD::get_singleton()->buffer_flush(buf);
-		state.instance_data_index = 0;
+	if (!merge) {
+		_finish_instance_upload();
 	}
 }
 
@@ -1938,6 +2026,9 @@ RendererCanvasRenderRD::RendererCanvasRenderRD() {
 	{ //bindings
 
 		state.canvas_state_buffer = RD::get_singleton()->uniform_buffer_create(sizeof(State::Buffer));
+		for (RID &buffer : merged_pass.layer_state_buffers) {
+			buffer = RD::get_singleton()->uniform_buffer_create(sizeof(State::Buffer));
+		}
 		state.lights_storage_buffer = RD::get_singleton()->storage_buffer_create(sizeof(LightUniform) * MAX_LIGHTS_PER_RENDER);
 
 		RD::SamplerState shadow_sampler_state;
@@ -2205,6 +2296,10 @@ void RendererCanvasRenderRD::_render_batch_items(RenderTarget p_to_render_target
 		// First item always forms its own batch.
 		bool batch_broken = false;
 		Batch *current_batch = _new_batch(batch_broken);
+		if (recording_merged_layer) {
+			// Later batches of this layer are copies of this one.
+			current_batch->merged_layer = merged_pass.layer_count - 1;
+		}
 
 		for (int i = 0; i < p_item_count; i++) {
 			Item *ci = items[i];
@@ -2265,12 +2360,17 @@ void RendererCanvasRenderRD::_render_batch_items(RenderTarget p_to_render_target
 		}
 	}
 
+	if (recording_merged_layer) {
+		return;
+	}
+	_submit_batches(p_to_render_target, p_to_backbuffer, false, r_render_info);
+}
+
+void RendererCanvasRenderRD::_submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info) {
 	if (state.canvas_instance_batches.is_empty()) {
 		// Nothing to render, just return.
 		return;
 	}
-
-	// Render batches
 
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 
@@ -2306,17 +2406,25 @@ void RendererCanvasRenderRD::_render_batch_items(RenderTarget p_to_render_target
 
 	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, clear ? RD::DRAW_CLEAR_COLOR_0 : RD::DRAW_DEFAULT_ALL, clear_color, 1.0f, 0, Rect2(), RDD::BreadcrumbMarker::UI_PASS);
 
-	RD::get_singleton()->draw_list_bind_uniform_set(draw_list, fb_uniform_set, BASE_UNIFORM_SET);
+	if (!p_merged) {
+		RD::get_singleton()->draw_list_bind_uniform_set(draw_list, fb_uniform_set, BASE_UNIFORM_SET);
+	}
 	RD::get_singleton()->draw_list_bind_uniform_set(draw_list, state.default_transforms_uniform_set, TRANSFORMS_UNIFORM_SET);
 
 	Item *current_clip = nullptr;
 	state.current_batch_uniform_set = RID();
+	uint32_t current_layer = UINT32_MAX;
 
 	for (uint32_t i = 0; i <= state.current_batch_index; i++) {
 		Batch *current_batch = &state.canvas_instance_batches[i];
 		// Skipping when there is no instances.
 		if (current_batch->instance_count == 0) {
 			continue;
+		}
+
+		if (p_merged && current_layer != current_batch->merged_layer) {
+			current_layer = current_batch->merged_layer;
+			RD::get_singleton()->draw_list_bind_uniform_set(draw_list, _get_merged_layer_uniform_set(p_to_render_target.render_target, current_layer), BASE_UNIFORM_SET);
 		}
 
 		//setup clip
@@ -2343,7 +2451,7 @@ void RendererCanvasRenderRD::_render_batch_items(RenderTarget p_to_render_target
 			}
 		}
 
-		_render_batch(draw_list, shader_data, fb_format, p_lights, current_batch, r_render_info);
+		_render_batch(draw_list, shader_data, fb_format, nullptr, current_batch, r_render_info);
 	}
 
 	RD::get_singleton()->draw_list_end();
@@ -3379,6 +3487,9 @@ RendererCanvasRenderRD::~RendererCanvasRenderRD() {
 	{
 		if (state.canvas_state_buffer.is_valid()) {
 			RD::get_singleton()->free_rid(state.canvas_state_buffer);
+		}
+		for (const RID &buffer : merged_pass.layer_state_buffers) {
+			RD::get_singleton()->free_rid(buffer);
 		}
 
 		memdelete_arr(state.light_uniforms);
