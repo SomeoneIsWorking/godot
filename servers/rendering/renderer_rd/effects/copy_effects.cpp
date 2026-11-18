@@ -801,7 +801,15 @@ void CopyEffects::gaussian_blur_raster(RID p_source_rd_texture, RID p_dest_textu
 	RID shader = blur_raster.shader.version_get_shader(blur_raster.shader_version, blur_mode);
 	ERR_FAIL_COND(shader.is_null());
 
-	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(dest_framebuffer);
+	// Only the region is blurred, as the compute version does: the pass covers it, while the viewport stays the
+	// whole texture so the triangle's UVs are the texture's.
+	const Rect2i whole(Point2i(), p_size);
+	const Rect2i region = p_region == Rect2i() ? whole : whole.intersection(p_region);
+	if (!region.has_area()) {
+		return;
+	}
+	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(dest_framebuffer, RD::DRAW_DEFAULT_ALL, VectorView<Color>(), 1.0f, 0, Rect2(region));
+	RD::get_singleton()->draw_list_set_viewport(draw_list, Rect2(whole));
 	RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, blur_raster.pipelines[blur_mode].get_render_pipeline(RD::INVALID_ID, RD::get_singleton()->framebuffer_get_format(dest_framebuffer)));
 	RD::get_singleton()->draw_list_bind_uniform_set(draw_list, uniform_set_cache->get_cache(shader, 0, u_source_rd_texture), 0);
 
