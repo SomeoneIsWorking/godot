@@ -164,6 +164,8 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 		bool uses_screen_texture_mipmaps = false;
 		bool uses_sdf = false;
 		bool uses_time = false;
+		// Reads where on the target a pixel is, which a turned swap chain changes.
+		bool uses_screen_coords = false;
 
 		void _clear_vertex_input_mask_cache();
 		void _create_pipeline(PipelineKey p_pipeline_key);
@@ -693,9 +695,10 @@ class RendererCanvasRenderRD : public RendererCanvasRender {
 	void _render_batch_items(RenderTarget p_to_render_target, int p_item_count, const Transform2D &p_canvas_transform_inverse, Light *p_lights, bool &r_sdf_used, bool p_to_backbuffer = false, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
 	bool _layer_reads_nothing_drawn(const Item *p_item_list) const;
 	RID _get_merged_layer_uniform_set(RID p_render_target, uint32_t p_layer);
-	void _submit_merged_pass();
+	bool _merged_pass_can_draw_to_screen(DisplayServerEnums::WindowID p_screen) const;
+	void _submit_merged_pass(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::INVALID_WINDOW_ID);
 	void _finish_instance_upload();
-	void _submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info);
+	void _submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info, DisplayServerEnums::WindowID p_screen = DisplayServerEnums::INVALID_WINDOW_ID, const Transform2D &p_scissor_transform = Transform2D());
 	void _record_item_commands(const Item *p_item, RenderTarget p_render_target, const Transform2D &p_base_transform, Item *&r_current_clip, Light *p_lights, bool &r_batch_broken, bool &r_sdf_used, Batch *&r_current_batch);
 	void _render_batch(RD::DrawListID p_draw_list, CanvasShaderData *p_shader_data, RenderingDevice::FramebufferFormatID p_framebuffer_format, Light *p_lights, Batch const *p_batch, RenderingServerTypes::RenderInfo *r_render_info = nullptr);
 	void _prepare_batch_texture_info(RID p_texture, TextureState &p_state, TextureInfo *p_info);
@@ -732,7 +735,7 @@ public:
 	void occluder_polygon_set_cull_mode(RID p_occluder, RSE::CanvasOccluderPolygonCullMode p_mode) override;
 
 	void canvas_render_items(RID p_to_render_target, Item *p_item_list, const Color &p_modulate, Light *p_light_list, Light *p_directional_light_list, const Transform2D &p_canvas_transform, RSE::CanvasItemTextureFilter p_default_filter, RSE::CanvasItemTextureRepeat p_default_repeat, bool p_snap_2d_vertices_to_pixel, bool &r_sdf_used, RenderingServerTypes::RenderInfo *r_render_info = nullptr) override;
-	void canvas_render_finish() override;
+	bool canvas_render_finish(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::INVALID_WINDOW_ID) override;
 
 	virtual void set_shadow_texture_size(int p_size) override;
 

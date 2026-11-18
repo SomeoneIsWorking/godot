@@ -335,7 +335,7 @@ void RendererViewport::_draw_3d(Viewport *p_viewport) {
 #endif // _3D_DISABLED
 }
 
-void RendererViewport::_draw_viewport(Viewport *p_viewport) {
+bool RendererViewport::_draw_viewport(Viewport *p_viewport, DisplayServerEnums::WindowID p_direct_to_screen) {
 	if (p_viewport->measure_render_time) {
 		String rt_id = "vp_begin_" + itos(p_viewport->self.get_id());
 		RSG::utilities->capture_timestamp(rt_id);
@@ -383,6 +383,9 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 	}
 
 	bool can_draw_3d = RSG::scene->is_camera(p_viewport->camera) && !p_viewport->disable_3d;
+	// Only a frame that is all 2D can be drawn into the screen in place of the render target.
+	const DisplayServerEnums::WindowID canvas_screen = (can_draw_3d || scenario_draw_canvas_bg) ? DisplayServerEnums::INVALID_WINDOW_ID : p_direct_to_screen;
+	bool drew_to_screen = false;
 
 	if ((scenario_draw_canvas_bg || can_draw_3d) && !p_viewport->render_buffers.is_valid()) {
 		//wants to draw 3D but there is no render buffer, create
@@ -736,7 +739,7 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 			canvas_idx++;
 		}
 
-		RSG::canvas_render->canvas_render_finish();
+		drew_to_screen = RSG::canvas_render->canvas_render_finish(canvas_screen);
 
 		if (scenario_draw_canvas_bg) {
 			// There may be an outstanding clear request if a clear was requested, but no 2D elements were drawn.
@@ -765,6 +768,8 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 		RSG::utilities->capture_timestamp(rt_id);
 		timestamp_vp_map[rt_id] = p_viewport->self;
 	}
+
+	return drew_to_screen;
 }
 
 DisplayServerEnums::WindowID RendererViewport::_get_containing_window(Viewport *p_viewport) {
@@ -928,10 +933,25 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 		{
 			RSG::scene->set_debug_draw_mode(vp->debug_draw);
 
-			// render standard mono camera
-			_draw_viewport(vp);
+			// The RD renderers draw 2D straight into the screen, dropping the blit, when this is the
+			// screen's only viewport and fills it, and nothing reads the render target (the movie writer).
+			DisplayServerEnums::WindowID direct_screen = DisplayServerEnums::INVALID_WINDOW_ID;
+			if (p_swap_buffers && vp->viewport_render_direct_to_screen && !RSG::rasterizer->is_low_end() && vp->viewport_to_screen != DisplayServerEnums::INVALID_WINDOW_ID &&
+					(vp->viewport_to_screen_rect == Rect2() || vp->viewport_to_screen_rect == Rect2(Vector2(), vp->size)) &&
+					Engine::get_singleton()->get_write_movie_path().is_empty()) {
+				direct_screen = vp->viewport_to_screen;
+				for (const Viewport *other : sorted_active_viewports) {
+					if (other != vp && other->last_pass == draw_viewports_pass && other->viewport_to_screen == direct_screen) {
+						direct_screen = DisplayServerEnums::INVALID_WINDOW_ID;
+						break;
+					}
+				}
+			}
 
-			if (vp->viewport_to_screen != DisplayServerEnums::INVALID_WINDOW_ID && (!vp->viewport_render_direct_to_screen || !RSG::rasterizer->is_low_end())) {
+			// render standard mono camera
+			const bool drew_to_screen = _draw_viewport(vp, direct_screen);
+
+			if (vp->viewport_to_screen != DisplayServerEnums::INVALID_WINDOW_ID && !drew_to_screen && (!vp->viewport_render_direct_to_screen || !RSG::rasterizer->is_low_end())) {
 				//copy to screen if set as such
 				RenderingServerTypes::BlitToScreen blit;
 				blit.render_target = vp->render_target;

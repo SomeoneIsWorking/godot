@@ -532,9 +532,72 @@ void RendererCanvasRenderRD::_finish_instance_upload() {
 	}
 }
 
-void RendererCanvasRenderRD::_submit_merged_pass() {
+bool RendererCanvasRenderRD::_merged_pass_can_draw_to_screen(DisplayServerEnums::WindowID p_screen) const {
+	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
+	RenderingDevice *rd = RD::get_singleton();
+	const RID rt = merged_pass.render_target;
+	if (merged_pass.layer_count == 0 || state.canvas_instance_batches.is_empty()) {
+		return false;
+	}
+	// The pass has to be the whole frame: an outstanding clear means nothing was drawn before it.
+	if (!texture_storage->render_target_is_clear_requested(rt)) {
+		return false;
+	}
+	// The blit would convert these; drawn straight, the pixels must already be what the screen shows.
+	if (texture_storage->render_target_is_using_hdr(rt) || texture_storage->render_target_get_msaa(rt) != RSE::VIEWPORT_MSAA_DISABLED) {
+		return false;
+	}
+	if (rd->screen_get_color_space(p_screen) != RD::COLOR_SPACE_REC709_NONLINEAR_SRGB) {
+		return false;
+	}
+	const int rotation = rd->screen_get_pre_rotation_degrees(p_screen);
+	Size2i screen_size(rd->screen_get_width(p_screen), rd->screen_get_height(p_screen));
+	if (rotation % 180 != 0) {
+		SWAP(screen_size.width, screen_size.height);
+	}
+	if (screen_size != texture_storage->render_target_get_size(rt)) {
+		return false;
+	}
+	if (rotation != 0) {
+		for (uint32_t i = 0; i <= state.current_batch_index; i++) {
+			const CanvasMaterialData *md = state.canvas_instance_batches[i].material_data;
+			if (md && md->shader_data->uses_screen_coords) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+void RendererCanvasRenderRD::_submit_merged_pass(DisplayServerEnums::WindowID p_screen) {
 	if (merged_pass.layer_count == 0) {
 		return;
+	}
+	Transform2D scissor_transform;
+	const int rotation = p_screen == DisplayServerEnums::INVALID_WINDOW_ID ? 0 : RD::get_singleton()->screen_get_pre_rotation_degrees(p_screen);
+	if (rotation != 0) {
+		// Turn the pass as the blit turns the render target onto the swap chain (blit.glsl).
+		const real_t angle = Math::deg_to_rad(real_t(-rotation));
+		const real_t c = Math::cos(angle);
+		const real_t s = Math::sin(angle);
+		Transform3D turn;
+		turn.basis = Basis(c, s, 0, -s, c, 0, 0, 0, 1);
+		const Size2 rt_size = RendererRD::TextureStorage::get_singleton()->render_target_get_size(merged_pass.render_target);
+		const Size2 sc_size(RD::get_singleton()->screen_get_width(p_screen), RD::get_singleton()->screen_get_height(p_screen));
+		Transform3D screen_transform;
+		screen_transform.translate_local(-(rt_size.width / 2.0f), -(rt_size.height / 2.0f), 0.0f);
+		screen_transform.scale(Vector3(2.0f / rt_size.width, 2.0f / rt_size.height, 1.0f));
+		screen_transform = turn * screen_transform;
+		for (uint32_t i = 0; i < merged_pass.layer_count; i++) {
+			_update_transform_to_mat4(screen_transform, merged_pass.layer_states[i].screen_transform);
+		}
+		// The same mapping from render target pixels to swap chain pixels, for scissor rectangles.
+		auto to_screen = [&](const Vector2 &p_pixel) {
+			const Vector3 ndc = screen_transform.xform(Vector3(p_pixel.x, p_pixel.y, 0));
+			return Vector2((ndc.x + 1) * 0.5f * sc_size.width, (ndc.y + 1) * 0.5f * sc_size.height);
+		};
+		const Vector2 origin = to_screen(Vector2());
+		scissor_transform = Transform2D(to_screen(Vector2(1, 0)) - origin, to_screen(Vector2(0, 1)) - origin, origin);
 	}
 	for (uint32_t i = 0; i < merged_pass.layer_count; i++) {
 		RD::get_singleton()->buffer_update(merged_pass.layer_state_buffers[i], 0, sizeof(State::Buffer), &merged_pass.layer_states[i]);
@@ -542,15 +605,20 @@ void RendererCanvasRenderRD::_submit_merged_pass() {
 	RenderTarget to_render_target;
 	to_render_target.render_target = merged_pass.render_target;
 	to_render_target.use_linear_colors = merged_pass.use_linear_colors;
-	_submit_batches(to_render_target, false, true, merged_pass.render_info);
+	_submit_batches(to_render_target, false, true, merged_pass.render_info, p_screen, scissor_transform);
 	merged_pass.layer_count = 0;
 	merged_pass.render_target = RID();
 	merged_pass.render_info = nullptr;
 	_finish_instance_upload();
 }
 
-void RendererCanvasRenderRD::canvas_render_finish() {
+bool RendererCanvasRenderRD::canvas_render_finish(DisplayServerEnums::WindowID p_screen) {
+	if (p_screen != DisplayServerEnums::INVALID_WINDOW_ID && _merged_pass_can_draw_to_screen(p_screen) && RD::get_singleton()->screen_prepare_for_drawing(p_screen) == OK) {
+		_submit_merged_pass(p_screen);
+		return true;
+	}
 	_submit_merged_pass();
+	return false;
 }
 
 RID RendererCanvasRenderRD::_get_pipeline_specialization_or_ubershader(CanvasShaderData *p_shader_data, PipelineKey &r_pipeline_key, PushConstant &r_push_constant, RID p_mesh_instance, void *p_surface, uint32_t p_surface_index, RID *r_vertex_array) {
@@ -1648,6 +1716,7 @@ void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
 	uses_screen_texture_mipmaps = false;
 	uses_sdf = false;
 	uses_time = false;
+	uses_screen_coords = false;
 	_clear_vertex_input_mask_cache();
 
 	if (code.is_empty()) {
@@ -1673,6 +1742,10 @@ void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
 	actions.usage_flag_pointers["texture_sdf"] = &uses_sdf;
 	actions.usage_flag_pointers["texture_sdf_normal"] = &uses_sdf;
 	actions.usage_flag_pointers["TIME"] = &uses_time;
+	actions.usage_flag_pointers["SCREEN_UV"] = &uses_screen_coords;
+	actions.usage_flag_pointers["SCREEN_PIXEL_SIZE"] = &uses_screen_coords;
+	actions.usage_flag_pointers["SCREEN_MATRIX"] = &uses_screen_coords;
+	actions.usage_flag_pointers["FRAGCOORD"] = &uses_screen_coords;
 
 	actions.uniforms = &uniforms;
 
@@ -1690,6 +1763,8 @@ void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
 
 	uses_screen_texture_mipmaps = gen_code.uses_screen_texture_mipmaps;
 	uses_screen_texture = gen_code.uses_screen_texture;
+	// Screen-space derivatives swap axes on a turned swap chain.
+	uses_screen_coords = uses_screen_coords || code.contains("dFdx") || code.contains("dFdy");
 
 	pipeline_hash_map.clear_pipelines();
 
@@ -2366,7 +2441,7 @@ void RendererCanvasRenderRD::_render_batch_items(RenderTarget p_to_render_target
 	_submit_batches(p_to_render_target, p_to_backbuffer, false, r_render_info);
 }
 
-void RendererCanvasRenderRD::_submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info) {
+void RendererCanvasRenderRD::_submit_batches(RenderTarget p_to_render_target, bool p_to_backbuffer, bool p_merged, RenderingServerTypes::RenderInfo *r_render_info, DisplayServerEnums::WindowID p_screen, const Transform2D &p_scissor_transform) {
 	if (state.canvas_instance_batches.is_empty()) {
 		// Nothing to render, just return.
 		return;
@@ -2402,9 +2477,16 @@ void RendererCanvasRenderRD::_submit_batches(RenderTarget p_to_render_target, bo
 		fb_uniform_set = _create_base_uniform_set(p_to_render_target.render_target, p_to_backbuffer);
 	}
 
-	RD::FramebufferFormatID fb_format = RD::get_singleton()->framebuffer_get_format(framebuffer);
-
-	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, clear ? RD::DRAW_CLEAR_COLOR_0 : RD::DRAW_DEFAULT_ALL, clear_color, 1.0f, 0, Rect2(), RDD::BreadcrumbMarker::UI_PASS);
+	RD::FramebufferFormatID fb_format;
+	RD::DrawListID draw_list;
+	if (p_screen != DisplayServerEnums::INVALID_WINDOW_ID) {
+		// Stands in for the render target, whose clear it took above.
+		fb_format = RD::get_singleton()->screen_get_framebuffer_format(p_screen);
+		draw_list = RD::get_singleton()->draw_list_begin_for_screen(p_screen, clear_color);
+	} else {
+		fb_format = RD::get_singleton()->framebuffer_get_format(framebuffer);
+		draw_list = RD::get_singleton()->draw_list_begin(framebuffer, clear ? RD::DRAW_CLEAR_COLOR_0 : RD::DRAW_DEFAULT_ALL, clear_color, 1.0f, 0, Rect2(), RDD::BreadcrumbMarker::UI_PASS);
+	}
 
 	if (!p_merged) {
 		RD::get_singleton()->draw_list_bind_uniform_set(draw_list, fb_uniform_set, BASE_UNIFORM_SET);
@@ -2431,7 +2513,7 @@ void RendererCanvasRenderRD::_submit_batches(RenderTarget p_to_render_target, bo
 		if (current_clip != current_batch->clip) {
 			current_clip = current_batch->clip;
 			if (current_clip) {
-				RD::get_singleton()->draw_list_enable_scissor(draw_list, current_clip->final_clip_rect);
+				RD::get_singleton()->draw_list_enable_scissor(draw_list, p_scissor_transform.xform(current_clip->final_clip_rect));
 			} else {
 				RD::get_singleton()->draw_list_disable_scissor(draw_list);
 			}

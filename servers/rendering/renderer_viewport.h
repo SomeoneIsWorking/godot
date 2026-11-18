@@ -209,7 +209,7 @@ private:
 	void _viewport_set_force_motion_vectors(Viewport *p_viewport, bool p_force_motion_vectors);
 	void _configure_3d_render_buffers(Viewport *p_viewport);
 	void _draw_3d(Viewport *p_viewport);
-	void _draw_viewport(Viewport *p_viewport);
+	bool _draw_viewport(Viewport *p_viewport, DisplayServerEnums::WindowID p_direct_to_screen = DisplayServerEnums::INVALID_WINDOW_ID);
 	DisplayServerEnums::WindowID _get_containing_window(Viewport *p_viewport);
 
 	int occlusion_rays_per_thread = 512;
