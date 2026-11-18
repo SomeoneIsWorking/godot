@@ -1535,6 +1535,17 @@ void RendererCanvasRenderRD::CanvasShaderData::_create_pipeline(PipelineKey p_pi
 
 	RID pipeline = RD::get_singleton()->render_pipeline_create(shader_rid, p_pipeline_key.framebuffer_format_id, p_pipeline_key.vertex_format_id, p_pipeline_key.render_primitive, RD::PipelineRasterizationState(), multisample_state, RD::PipelineDepthStencilState(), blend_state, dynamic_state_flags, 0, specialization_constants);
 	ERR_FAIL_COND(pipeline.is_null());
+	if (!path.is_empty()) {
+		RD::get_singleton()->set_resource_name(pipeline, path);
+	}
+#ifdef GODOT_USE_PERF_UNITS
+	{
+		RendererCanvasRenderRD *canvas_singleton = static_cast<RendererCanvasRenderRD *>(RendererCanvasRender::singleton);
+		MutexLock lock(canvas_singleton->shader.mutex);
+		RD::get_singleton()->get_work_counts().dump_shader(path.is_empty() ? String("canvas default") : path, p_pipeline_key.variant, p_pipeline_key.shader_specialization.packed_0,
+				canvas_singleton->shader.canvas_shader.version_build_variant_stage_sources(version, p_pipeline_key.variant));
+	}
+#endif
 
 	pipeline_hash_map.add_compiled_pipeline(p_pipeline_key.hash(), pipeline);
 }

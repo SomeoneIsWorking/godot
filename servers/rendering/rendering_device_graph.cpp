@@ -919,7 +919,10 @@ void RenderingDeviceGraph::_get_draw_list_render_pass_and_framebuffer(const Reco
 static uint32_t draw_list_total_size = 0;
 #endif
 
-void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size) {
+void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size, bool p_primary) {
+#ifdef GODOT_USE_PERF_UNITS
+	RenderingDeviceWorkCounts *counts = p_primary ? work_counts : nullptr;
+#endif
 #if PRINT_DRAW_LIST_STATS
 	draw_list_total_size += p_instruction_data_size;
 #endif
@@ -938,6 +941,11 @@ void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command
 			case DrawListInstruction::TYPE_BIND_PIPELINE: {
 				const DrawListBindPipelineInstruction *bind_pipeline_instruction = reinterpret_cast<const DrawListBindPipelineInstruction *>(instruction);
 				driver->command_bind_render_pipeline(p_command_buffer, bind_pipeline_instruction->pipeline);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->pipeline_bound(bind_pipeline_instruction->pipeline);
+				}
+#endif
 				instruction_data_cursor += sizeof(DrawListBindPipelineInstruction);
 			} break;
 			case DrawListInstruction::TYPE_BIND_UNIFORM_SETS: {
@@ -963,22 +971,62 @@ void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command
 			} break;
 			case DrawListInstruction::TYPE_DRAW: {
 				const DrawListDrawInstruction *draw_instruction = reinterpret_cast<const DrawListDrawInstruction *>(instruction);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_begin(p_command_buffer);
+				}
+#endif
 				driver->command_render_draw(p_command_buffer, draw_instruction->vertex_count, draw_instruction->instance_count, 0, 0);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_end(p_command_buffer);
+				}
+#endif
 				instruction_data_cursor += sizeof(DrawListDrawInstruction);
 			} break;
 			case DrawListInstruction::TYPE_DRAW_INDEXED: {
 				const DrawListDrawIndexedInstruction *draw_indexed_instruction = reinterpret_cast<const DrawListDrawIndexedInstruction *>(instruction);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_begin(p_command_buffer);
+				}
+#endif
 				driver->command_render_draw_indexed(p_command_buffer, draw_indexed_instruction->index_count, draw_indexed_instruction->instance_count, draw_indexed_instruction->first_index, 0, 0);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_end(p_command_buffer);
+				}
+#endif
 				instruction_data_cursor += sizeof(DrawListDrawIndexedInstruction);
 			} break;
 			case DrawListInstruction::TYPE_DRAW_INDIRECT: {
 				const DrawListDrawIndirectInstruction *draw_indirect_instruction = reinterpret_cast<const DrawListDrawIndirectInstruction *>(instruction);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_begin(p_command_buffer);
+				}
+#endif
 				driver->command_render_draw_indirect(p_command_buffer, draw_indirect_instruction->buffer, draw_indirect_instruction->offset, draw_indirect_instruction->draw_count, draw_indirect_instruction->stride);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_end(p_command_buffer);
+				}
+#endif
 				instruction_data_cursor += sizeof(DrawListDrawIndirectInstruction);
 			} break;
 			case DrawListInstruction::TYPE_DRAW_INDEXED_INDIRECT: {
 				const DrawListDrawIndexedIndirectInstruction *draw_indexed_indirect_instruction = reinterpret_cast<const DrawListDrawIndexedIndirectInstruction *>(instruction);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_begin(p_command_buffer);
+				}
+#endif
 				driver->command_render_draw_indexed_indirect(p_command_buffer, draw_indexed_indirect_instruction->buffer, draw_indexed_indirect_instruction->offset, draw_indexed_indirect_instruction->draw_count, draw_indexed_indirect_instruction->stride);
+#ifdef GODOT_USE_PERF_UNITS
+				if (counts) {
+					counts->draw_end(p_command_buffer);
+				}
+#endif
 				instruction_data_cursor += sizeof(DrawListDrawIndexedIndirectInstruction);
 			} break;
 			case DrawListInstruction::TYPE_EXECUTE_COMMANDS: {
@@ -1059,7 +1107,7 @@ void RenderingDeviceGraph::_add_draw_list_begin(FramebufferCache *p_framebuffer_
 
 void RenderingDeviceGraph::_run_secondary_command_buffer_task(const SecondaryCommandBuffer *p_secondary) {
 	driver->command_buffer_begin_secondary(p_secondary->command_buffer, p_secondary->render_pass, 0, p_secondary->framebuffer);
-	_run_draw_list_command(p_secondary->command_buffer, p_secondary->instruction_data.ptr(), p_secondary->instruction_data.size());
+	_run_draw_list_command(p_secondary->command_buffer, p_secondary->instruction_data.ptr(), p_secondary->instruction_data.size(), false);
 	driver->command_buffer_end(p_secondary->command_buffer);
 }
 
@@ -1180,7 +1228,12 @@ void RenderingDeviceGraph::_run_render_commands(int32_t p_level, const RecordedC
 
 				if (framebuffer && render_pass) {
 					driver->command_begin_render_pass(r_command_buffer, render_pass, framebuffer, draw_list_command->command_buffer_type, draw_list_command->region, clear_values);
-					_run_draw_list_command(r_command_buffer, draw_list_command->instruction_data(), draw_list_command->instruction_data_size);
+#ifdef GODOT_USE_PERF_UNITS
+					if (work_counts) {
+						work_counts->pass_replayed(draw_list_command->region.size);
+					}
+#endif
+					_run_draw_list_command(r_command_buffer, draw_list_command->instruction_data(), draw_list_command->instruction_data_size, true);
 					driver->command_end_render_pass(r_command_buffer);
 				}
 			} break;

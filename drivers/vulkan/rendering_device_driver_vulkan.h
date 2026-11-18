@@ -762,6 +762,15 @@ public:
 	virtual void command_timestamp_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) override final;
 	virtual void command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) override final;
 
+#ifdef GODOT_USE_PERF_UNITS
+	virtual QueryPoolID pipeline_statistics_query_pool_create(uint32_t p_query_count) override final;
+	virtual void pipeline_statistics_query_pool_free(QueryPoolID p_pool_id) override final;
+	virtual void pipeline_statistics_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) override final;
+	virtual void command_pipeline_statistics_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) override final;
+	virtual void command_begin_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) override final;
+	virtual void command_end_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) override final;
+#endif
+
 	/****************/
 	/**** LABELS ****/
 	/****************/

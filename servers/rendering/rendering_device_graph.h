@@ -33,6 +33,7 @@
 #include "core/object/worker_thread_pool.h"
 #include "servers/rendering/rendering_device_commons.h"
 #include "servers/rendering/rendering_device_driver.h"
+#include "servers/rendering/rendering_device_work_counts.h"
 
 #ifdef DEV_ENABLED
 #include "core/templates/rb_map.h"
@@ -871,7 +872,7 @@ private:
 	void _run_compute_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size);
 	void _get_draw_list_render_pass_and_framebuffer(const RecordedDrawListCommand *p_draw_list_command, RDD::RenderPassID &r_render_pass, RDD::FramebufferID &r_framebuffer);
 	void _run_raytracing_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size);
-	void _run_draw_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size);
+	void _run_draw_list_command(RDD::CommandBufferID p_command_buffer, const uint8_t *p_instruction_data, uint32_t p_instruction_data_size, bool p_primary);
 	void _add_draw_list_begin(FramebufferCache *p_framebuffer_cache, RDD::RenderPassID p_render_pass, RDD::FramebufferID p_framebuffer, Rect2i p_region, VectorView<AttachmentOperation> p_attachment_operations, VectorView<RDD::RenderPassClearValue> p_attachment_clear_values, BitField<RDD::PipelineStageBits> p_stages, uint32_t p_breadcrumb, bool p_split_cmd_buffer);
 	void _run_secondary_command_buffer_task(const SecondaryCommandBuffer *p_secondary);
 	void _wait_for_secondary_command_buffer_tasks();
@@ -884,12 +885,19 @@ private:
 	void _print_compute_list(const uint8_t *p_instruction_data, uint32_t p_instruction_data_size);
 	void _print_raytracing_list(const uint8_t *p_instruction_data, uint32_t p_instruction_data_size);
 
+#ifdef GODOT_USE_PERF_UNITS
+	RenderingDeviceWorkCounts *work_counts = nullptr;
+#endif
+
 public:
 	RenderingDeviceGraph();
 	~RenderingDeviceGraph();
 	void initialize(RDD *p_driver, RenderPassCreationFunction p_render_pass_creation_function, uint32_t p_frame_count, RDD::CommandQueueFamilyID p_secondary_command_queue_family, uint32_t p_secondary_command_buffers_per_frame);
 	void finalize();
 	void begin();
+#ifdef GODOT_USE_PERF_UNITS
+	void set_work_counts(RenderingDeviceWorkCounts *p_work_counts) { work_counts = p_work_counts; }
+#endif
 	void add_blas_build(RDD::AccelerationStructureID p_blas, RDD::BufferID p_scratch_buffer, ResourceTracker *p_dst_tracker, VectorView<ResourceTracker *> p_src_trackers);
 	void add_tlas_build(RDD::AccelerationStructureID p_tlas, RDD::BufferID p_scratch_buffer, RDD::BufferID p_instance_buffer, uint32_t p_instance_offset, uint32_t p_instance_count, ResourceTracker *p_dst_tracker, VectorView<ResourceTracker *> p_src_trackers);
 	void add_buffer_clear(RDD::BufferID p_dst, ResourceTracker *p_dst_tracker, uint32_t p_offset, uint32_t p_size);

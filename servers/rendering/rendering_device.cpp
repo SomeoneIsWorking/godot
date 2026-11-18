@@ -1165,6 +1165,9 @@ Error RenderingDevice::_buffer_update(Buffer *p_buffer, RID p_buffer_id, uint32_
 
 Error RenderingDevice::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p_size, const void *p_data, bool p_skip_check) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.upload(p_size);
+#endif
 
 	ERR_FAIL_COND_V_MSG(draw_list.active && !p_skip_check, ERR_INVALID_PARAMETER,
 			"Updating buffers is forbidden during creation of a draw list.");
@@ -2253,6 +2256,9 @@ Error RenderingDevice::_texture_initialize(RID p_texture, uint32_t p_layer, cons
 
 Error RenderingDevice::texture_update(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.upload(p_data.size());
+#endif
 
 	ERR_FAIL_COND_V_MSG(draw_list.active, ERR_INVALID_PARAMETER, "Updating textures is forbidden during creation of a draw list.");
 	ERR_FAIL_COND_V_MSG(compute_list.active, ERR_INVALID_PARAMETER, "Updating textures is forbidden during creation of a compute list.");
@@ -3032,6 +3038,9 @@ Error RenderingDevice::texture_copy(RID p_from_texture, RID p_to_texture, const 
 		draw_graph.add_synchronization();
 	}
 
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.copy(2 * uint64_t(p_size.x) * uint64_t(p_size.y) * uint64_t(p_size.z) * get_image_format_pixel_size(src_tex->format));
+#endif
 	draw_graph.add_texture_copy(src_tex->driver_id, src_tex->draw_tracker, dst_tex->driver_id, dst_tex->draw_tracker, copy_region);
 
 	return OK;
@@ -3085,6 +3094,9 @@ Error RenderingDevice::texture_resolve_multisample(RID p_from_texture, RID p_to_
 		draw_graph.add_synchronization();
 	}
 
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.copy(uint64_t(src_tex->width) * src_tex->height * get_image_format_pixel_size(src_tex->format) * (TEXTURE_SAMPLES_COUNT[src_tex->samples] + 1));
+#endif
 	draw_graph.add_texture_resolve(src_tex->driver_id, src_tex->draw_tracker, dst_tex->driver_id, dst_tex->draw_tracker, src_tex->base_layer, src_tex->base_mipmap, dst_tex->base_layer, dst_tex->base_mipmap);
 
 	return OK;
@@ -4964,6 +4976,9 @@ RID RenderingDevice::render_pipeline_create(RID p_shader, FramebufferFormatID p_
 	}
 
 	pipeline.shader = p_shader;
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.pipeline_named(pipeline.driver_id, shader->name);
+#endif
 	pipeline.shader_driver_id = shader->driver_id;
 	pipeline.shader_layout_hash = shader->layout_hash;
 	pipeline.set_formats = shader->set_formats;
@@ -5534,6 +5549,10 @@ RenderingDevice::DrawListID RenderingDevice::draw_list_begin_for_screen(DisplayS
 	RDD::RenderPassClearValue clear_value;
 	clear_value.color = p_clear_color;
 
+#ifdef GODOT_USE_PERF_UNITS
+	// The swap chain's pass clears and stores four bytes a pixel.
+	work_counts.render_pass(uint64_t(viewport.size.x) * viewport.size.y, 0, uint64_t(viewport.size.x) * viewport.size.y * 4, true);
+#endif
 	RDD::RenderPassID render_pass = driver->swap_chain_get_render_pass(sc_it->value);
 	draw_graph.add_draw_list_begin(render_pass, fb_it->value, viewport, RDG::ATTACHMENT_OPERATION_CLEAR, clear_value, RDD::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, RDD::BreadcrumbMarker::BLIT_PASS, split_swapchain_into_its_own_cmd_buffer);
 
@@ -5642,6 +5661,26 @@ RenderingDevice::DrawListID RenderingDevice::draw_list_begin(RID p_framebuffer, 
 		clear_values[i] = clear_value;
 	}
 
+#ifdef GODOT_USE_PERF_UNITS
+	{
+		// A tiler loads each attachment it does not clear or ignore, and stores each one.
+		const uint64_t pixels = uint64_t(viewport_size.x) * viewport_size.y;
+		uint64_t loaded = 0;
+		uint64_t stored = 0;
+		for (int i = 0; i < framebuffer->texture_ids.size(); i++) {
+			const Texture *texture = texture_owner.get_or_null(framebuffer->texture_ids[i]);
+			if (texture == nullptr) {
+				continue;
+			}
+			const uint64_t bytes = pixels * get_image_format_pixel_size(texture->format) * TEXTURE_SAMPLES_COUNT[texture->samples];
+			if (operations[i] == RDG::ATTACHMENT_OPERATION_DEFAULT) {
+				loaded += bytes;
+			}
+			stored += bytes;
+		}
+		work_counts.render_pass(pixels, loaded, stored, false);
+	}
+#endif
 	draw_graph.add_draw_list_begin(framebuffer->framebuffer_cache, Rect2i(viewport_offset, viewport_size), operations, clear_values, stages, p_breadcrumb);
 	draw_graph.add_draw_list_usages(resource_trackers, resource_usages);
 
@@ -7786,6 +7825,9 @@ void RenderingDevice::set_resource_name(RID p_id, const String &p_name) {
 	} else if (render_pipeline_owner.owns(p_id)) {
 		RenderPipeline *pipeline = render_pipeline_owner.get_or_null(p_id);
 		driver->set_object_name(RDD::OBJECT_TYPE_PIPELINE, pipeline->driver_id, p_name);
+#ifdef GODOT_USE_PERF_UNITS
+		work_counts.pipeline_named(pipeline->driver_id, p_name);
+#endif
 	} else if (compute_pipeline_owner.owns(p_id)) {
 		ComputePipeline *pipeline = compute_pipeline_owner.get_or_null(p_id);
 		driver->set_object_name(RDD::OBJECT_TYPE_PIPELINE, pipeline->driver_id, p_name);
@@ -8093,6 +8135,10 @@ void RenderingDevice::_begin_frame(bool p_presented) {
 		SWAP(frames[frame].timestamp_names, frames[frame].timestamp_result_names);
 		SWAP(frames[frame].timestamp_cpu_values, frames[frame].timestamp_cpu_result_values);
 	}
+
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.frame_begin(frame, frames[frame].command_buffer);
+#endif
 
 	frames[frame].timestamp_result_count = frames[frame].timestamp_count;
 	frames[frame].timestamp_count = 0;
@@ -8527,6 +8573,12 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 
 	// Create draw graph and start it initialized as well.
 	draw_graph.initialize(driver, &_render_pass_create_from_graph, frames.size(), main_queue_family, SECONDARY_COMMAND_BUFFERS_PER_FRAME);
+#ifdef GODOT_USE_PERF_UNITS
+	if (is_main_instance) {
+		work_counts.initialize(driver, frames.size());
+		draw_graph.set_work_counts(&work_counts);
+	}
+#endif
 	draw_graph.begin();
 
 	for (uint32_t i = 0; i < frames.size(); i++) {
@@ -8869,6 +8921,11 @@ void RenderingDevice::finalize() {
 	// Wait for transfer workers to finish.
 	_submit_transfer_workers();
 	_wait_for_transfer_workers();
+
+#ifdef GODOT_USE_PERF_UNITS
+	work_counts.report();
+	work_counts.finalize();
+#endif
 
 	// Delete everything the graph has created.
 	draw_graph.finalize();

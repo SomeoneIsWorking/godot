@@ -46,6 +46,7 @@
 // ***********************************************************************************
 
 #include "core/object/object.h"
+#include "core/profiling/profiling.h"
 #include "core/templates/paged_allocator.h"
 #include "servers/rendering/rendering_context_driver.h"
 #include "servers/rendering/rendering_device_commons.h"
@@ -831,6 +832,20 @@ public:
 	// Commands.
 	virtual void command_timestamp_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) = 0;
 	virtual void command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) = 0;
+
+#ifdef GODOT_USE_PERF_UNITS
+	// ----- PIPELINE STATISTICS -----
+
+	// Four values a query: vertex shader invocations, clipping invocations, clipping primitives, fragment shader invocations.
+	// A driver without them returns a null pool.
+	virtual QueryPoolID pipeline_statistics_query_pool_create(uint32_t p_query_count) { return QueryPoolID(); }
+	virtual void pipeline_statistics_query_pool_free(QueryPoolID p_pool_id) {}
+	// Waits for the queries' results.
+	virtual void pipeline_statistics_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) {}
+	virtual void command_pipeline_statistics_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) {}
+	virtual void command_begin_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {}
+	virtual void command_end_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {}
+#endif
 
 	/****************/
 	/**** LABELS ****/

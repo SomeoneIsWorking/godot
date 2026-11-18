@@ -858,6 +858,9 @@ Error RenderingDeviceDriverVulkan::_check_device_features() {
 	VK_DEVICEFEATURE_ENABLE_IF(shaderImageGatherExtended);
 	VK_DEVICEFEATURE_ENABLE_IF(shaderStorageImageExtendedFormats);
 	VK_DEVICEFEATURE_ENABLE_IF(shaderStorageImageReadWithoutFormat);
+#ifdef GODOT_USE_PERF_UNITS
+	VK_DEVICEFEATURE_ENABLE_IF(pipelineStatisticsQuery);
+#endif
 	VK_DEVICEFEATURE_ENABLE_IF(shaderStorageImageWriteWithoutFormat);
 	VK_DEVICEFEATURE_ENABLE_IF(shaderUniformBufferArrayDynamicIndexing);
 	VK_DEVICEFEATURE_ENABLE_IF(shaderSampledImageArrayDynamicIndexing);
@@ -6812,6 +6815,53 @@ void RenderingDeviceDriverVulkan::command_timestamp_write(CommandBufferID p_cmd_
 	const CommandBufferInfo *command_buffer = (const CommandBufferInfo *)p_cmd_buffer.id;
 	vkCmdWriteTimestamp(command_buffer->vk_command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, (VkQueryPool)p_pool_id.id, p_index);
 }
+
+#ifdef GODOT_USE_PERF_UNITS
+// ----- PIPELINE STATISTICS -----
+
+static constexpr VkQueryPipelineStatisticFlags PERF_PIPELINE_STATISTICS = VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT |
+		VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT |
+		VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT;
+
+RDD::QueryPoolID RenderingDeviceDriverVulkan::pipeline_statistics_query_pool_create(uint32_t p_query_count) {
+	if (!requested_device_features.pipelineStatisticsQuery) {
+		return QueryPoolID();
+	}
+	VkQueryPoolCreateInfo query_pool_create_info = {};
+	query_pool_create_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	query_pool_create_info.queryType = VK_QUERY_TYPE_PIPELINE_STATISTICS;
+	query_pool_create_info.queryCount = p_query_count;
+	query_pool_create_info.pipelineStatistics = PERF_PIPELINE_STATISTICS;
+
+	VkQueryPool vk_query_pool = VK_NULL_HANDLE;
+	vkCreateQueryPool(vk_device, &query_pool_create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_QUERY_POOL), &vk_query_pool);
+	return RDD::QueryPoolID(vk_query_pool);
+}
+
+void RenderingDeviceDriverVulkan::pipeline_statistics_query_pool_free(QueryPoolID p_pool_id) {
+	vkDestroyQueryPool(vk_device, (VkQueryPool)p_pool_id.id, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_QUERY_POOL));
+}
+
+void RenderingDeviceDriverVulkan::pipeline_statistics_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) {
+	constexpr uint32_t values = 4;
+	vkGetQueryPoolResults(vk_device, (VkQueryPool)p_pool_id.id, 0, p_query_count, sizeof(uint64_t) * values * p_query_count, r_results, sizeof(uint64_t) * values, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+}
+
+void RenderingDeviceDriverVulkan::command_pipeline_statistics_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) {
+	const CommandBufferInfo *command_buffer = (const CommandBufferInfo *)p_cmd_buffer.id;
+	vkCmdResetQueryPool(command_buffer->vk_command_buffer, (VkQueryPool)p_pool_id.id, 0, p_query_count);
+}
+
+void RenderingDeviceDriverVulkan::command_begin_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {
+	const CommandBufferInfo *command_buffer = (const CommandBufferInfo *)p_cmd_buffer.id;
+	vkCmdBeginQuery(command_buffer->vk_command_buffer, (VkQueryPool)p_pool_id.id, p_index, 0);
+}
+
+void RenderingDeviceDriverVulkan::command_end_pipeline_statistics_query(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {
+	const CommandBufferInfo *command_buffer = (const CommandBufferInfo *)p_cmd_buffer.id;
+	vkCmdEndQuery(command_buffer->vk_command_buffer, (VkQueryPool)p_pool_id.id, p_index);
+}
+#endif
 
 /****************/
 /**** LABELS ****/

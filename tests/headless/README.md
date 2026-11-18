@@ -212,3 +212,32 @@ one branch. At exit it prints, for every zone that ran:
 
 Each thread counts on its own counter; a zone's name is its profiling label (`::` becomes `.`),
 and script functions are `script <name>`. Code is `core/profiling/perf_zones.*`.
+
+### GPU work per present
+
+The same build counts the GPU's work per present in units host load does not move (Vulkan only;
+other drivers print a line saying the channel is off). Every draw of a primary command buffer is
+wrapped in a pipeline statistics query and charged to its pipeline's name: the RD shader's
+(`CanvasShaderRD.<variant>`, `BlitShaderRD.0`) or the one given with `set_resource_name`, which a
+canvas shader's pipelines get from its resource path. With `GODOT_PERF_ZONES` set it prints:
+
+```
+[perf] gpu run-end: <presents> presents, ...
+[perf] gpu fragment invocations|vertex invocations|clipping invocations|clipping primitives: ...
+[perf] gpu draws|pipeline binds|render passes|screen-size passes: ...
+[perf] gpu pass bytes loaded|pass bytes stored|copy bytes|upload bytes: ...
+[perf] gpu shader <name> fragments|draws: ...
+[perf] gpu pass <n>: <w>x<h>, <draws> draws, <px> px shaded, most by <shader>   (the last present)
+```
+
+- Fragment invocations are the driver's count, so they follow the pixels each draw covers (2D draws
+  have no depth test to cull them); they repeat exactly between runs on one GPU and driver.
+- Pass bytes are what a tiling GPU moves for each render pass's attachments: every attachment it does
+  not clear or ignore is loaded, every one is stored. Texture reads by shaders are not counted.
+- Upload bytes are `buffer_update` and `texture_update` calls only; persistently mapped buffers are not.
+- `GODOT_PERF_SHADER_DUMP=<dir>` writes each canvas shader variant the run compiles as Vulkan GLSL
+  (`<path>.v<variant>.s<specialization>.vert|frag`), for an offline compiler such as Arm's
+  `malioc --vulkan -S 0=<specialization>`.
+
+Code is `servers/rendering/rendering_device_work_counts.*`, hooked from `RenderingDevice` and
+`RenderingDeviceGraph`.

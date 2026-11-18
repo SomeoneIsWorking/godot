@@ -1747,6 +1747,9 @@ private:
 	bool _dependencies_make_mutable(RID p_id, RDG::ResourceTracker *p_resource_tracker);
 
 	RenderingDeviceGraph draw_graph;
+#ifdef GODOT_USE_PERF_UNITS
+	RenderingDeviceWorkCounts work_counts;
+#endif
 
 	/**************************/
 	/**** QUEUE MANAGEMENT ****/
@@ -1936,6 +1939,9 @@ public:
 	RenderingDevice *create_local_device();
 
 	void set_resource_name(RID p_id, const String &p_name);
+#ifdef GODOT_USE_PERF_UNITS
+	RenderingDeviceWorkCounts &get_work_counts() { return work_counts; }
+#endif
 
 	void _draw_command_begin_label(String p_label_name, const Color &p_color = Color(1, 1, 1, 1));
 	void draw_command_begin_label(const Span<char> p_label_name, const Color &p_color = Color(1, 1, 1, 1));
