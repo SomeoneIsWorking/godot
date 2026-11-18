@@ -547,6 +547,12 @@ bool RendererCanvasRenderRD::_merged_pass_can_draw_to_screen(DisplayServerEnums:
 	if (texture_storage->render_target_is_using_hdr(rt) || texture_storage->render_target_get_msaa(rt) != RSE::VIEWPORT_MSAA_DISABLED) {
 		return false;
 	}
+	// A swap chain still to be made reports its old or default size, turn and colour space: blit that frame.
+	RenderingContextDriver *context = rd->get_context_driver();
+	const RenderingContextDriver::SurfaceID surface = context->surface_get_from_window(p_screen);
+	if (surface == 0 || context->surface_get_needs_resize(surface)) {
+		return false;
+	}
 	if (rd->screen_get_color_space(p_screen) != RD::COLOR_SPACE_REC709_NONLINEAR_SRGB) {
 		return false;
 	}
