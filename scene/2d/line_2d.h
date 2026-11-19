@@ -116,6 +116,13 @@ public:
 	void set_antialiased(bool p_antialiased);
 	bool get_antialiased() const;
 
+	// Draw order per segment, by its first point, relative to the line's own: one continuous line can pass over and
+	// under other items. Empty draws it all at the line's own.
+	void set_point_z_indices(const Vector<int> &p_z_indices);
+	Vector<int> get_point_z_indices() const;
+
+	~Line2D();
+
 protected:
 	void _notification(int p_what);
 	void _draw();
@@ -128,6 +135,9 @@ private:
 
 private:
 	Vector<Vector2> _points;
+	Vector<int> _point_z_indices;
+	// Child items holding the segments drawn at another order.
+	LocalVector<RID> _z_items;
 	LineJointMode _joint_mode = LINE_JOINT_SHARP;
 	LineCapMode _begin_cap_mode = LINE_CAP_NONE;
 	LineCapMode _end_cap_mode = LINE_CAP_NONE;

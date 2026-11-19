@@ -49,6 +49,7 @@ void LineBuilder::build() {
 		colors.clear();
 		indices.clear();
 		uvs.clear();
+		triangle_segments.clear();
 		return;
 	}
 
@@ -177,6 +178,7 @@ void LineBuilder::build() {
 
 	// For each additional segment
 	for (int i = first_point; i <= segments_count; ++i) {
+		_segment = MAX(i - 1, 0);
 		pos1 = points[(i == -1) ? point_count - 1 : i % point_count]; // First point.
 		Vector2 pos2 = points[(i + 1) % point_count]; // Second point.
 
@@ -383,6 +385,7 @@ void LineBuilder::build() {
 	}
 
 	// Draw the last (or only) segment, with its end cap logic.
+	_segment = point_count - 2;
 	if (!wrap_around) {
 		pos1 = points[point_count - 1];
 
@@ -473,6 +476,8 @@ void LineBuilder::strip_add_quad(Vector2 up, Vector2 down, Color color, float uv
 	indices.push_back(_last_index[UP]);
 	indices.push_back(vi);
 	indices.push_back(vi + 1);
+	triangle_segments.push_back(_segment);
+	triangle_segments.push_back(_segment);
 
 	_last_index[UP] = vi;
 	_last_index[DOWN] = vi + 1;
@@ -498,6 +503,7 @@ void LineBuilder::strip_add_tri(Vector2 up, Orientation orientation) {
 	indices.push_back(_last_index[opposite_orientation]);
 	indices.push_back(vi);
 	indices.push_back(_last_index[orientation]);
+	triangle_segments.push_back(_segment);
 
 	_last_index[opposite_orientation] = vi;
 }
@@ -594,5 +600,6 @@ void LineBuilder::new_arc(Vector2 center, Vector2 vbegin, float angle_delta, Col
 		indices.push_back(vi0);
 		indices.push_back(++vi);
 		indices.push_back(vi + 1);
+		triangle_segments.push_back(_segment);
 	}
 }

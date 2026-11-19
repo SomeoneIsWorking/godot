@@ -57,6 +57,8 @@ public:
 	Vector<Color> colors;
 	Vector<Vector2> uvs;
 	Vector<int> indices;
+	// The segment (by its first point) each triangle of indices belongs to.
+	Vector<int> triangle_segments;
 
 	LineBuilder();
 
@@ -80,4 +82,5 @@ private:
 private:
 	bool _interpolate_color = false;
 	int _last_index[2] = {}; // Index of last up and down vertices of the strip
+	int _segment = 0;
 };

@@ -273,7 +273,26 @@ bool Line2D::get_antialiased() const {
 	return _antialiased;
 }
 
+void Line2D::set_point_z_indices(const Vector<int> &p_z_indices) {
+	_point_z_indices = p_z_indices;
+	queue_redraw();
+}
+
+Vector<int> Line2D::get_point_z_indices() const {
+	return _point_z_indices;
+}
+
+Line2D::~Line2D() {
+	for (const RID &item : _z_items) {
+		RS::get_singleton()->free_rid(item);
+	}
+}
+
 void Line2D::_draw() {
+	for (const RID &item : _z_items) {
+		RS::get_singleton()->canvas_item_clear(item);
+	}
+
 	int len = _points.size();
 	if (len <= 1 || _width == 0.f) {
 		return;
@@ -306,13 +325,57 @@ void Line2D::_draw() {
 		return;
 	}
 
-	RS::get_singleton()->canvas_item_add_triangle_array(
-			get_canvas_item(),
-			lb.indices,
-			lb.vertices,
-			lb.colors,
-			lb.uvs, Vector<int>(), Vector<float>(),
-			texture_rid);
+	if (_point_z_indices.is_empty()) {
+		RS::get_singleton()->canvas_item_add_triangle_array(
+				get_canvas_item(),
+				lb.indices,
+				lb.vertices,
+				lb.colors,
+				lb.uvs, Vector<int>(), Vector<float>(),
+				texture_rid);
+		return;
+	}
+
+	// Triangles grouped by their segment's order; the line's own order draws on its own item.
+	LocalVector<int> orders;
+	LocalVector<Vector<int>> groups;
+	const int last_z = _point_z_indices.size() - 1;
+	for (int t = 0; t < lb.triangle_segments.size(); ++t) {
+		const int z = _point_z_indices[CLAMP(lb.triangle_segments[t], 0, last_z)];
+		int g = orders.find(z);
+		if (g < 0) {
+			g = orders.size();
+			orders.push_back(z);
+			groups.push_back(Vector<int>());
+		}
+		Vector<int> &group = groups[g];
+		group.push_back(lb.indices[t * 3]);
+		group.push_back(lb.indices[t * 3 + 1]);
+		group.push_back(lb.indices[t * 3 + 2]);
+	}
+	uint32_t used = 0;
+	for (uint32_t g = 0; g < orders.size(); ++g) {
+		RID item = get_canvas_item();
+		if (orders[g] != 0) {
+			if (used == _z_items.size()) {
+				RID child = RS::get_singleton()->canvas_item_create();
+				RS::get_singleton()->canvas_item_set_parent(child, get_canvas_item());
+				RS::get_singleton()->canvas_item_set_use_parent_material(child, true);
+				_z_items.push_back(child);
+			}
+			item = _z_items[used++];
+			RS::get_singleton()->canvas_item_set_z_index(item, orders[g]);
+			RS::get_singleton()->canvas_item_set_default_texture_filter(item, RSE::CanvasItemTextureFilter(get_texture_filter_in_tree()));
+			RS::get_singleton()->canvas_item_set_default_texture_repeat(item, RSE::CanvasItemTextureRepeat(get_texture_repeat_in_tree()));
+		}
+		RS::get_singleton()->canvas_item_add_triangle_array(
+				item,
+				groups[g],
+				lb.vertices,
+				lb.colors,
+				lb.uvs, Vector<int>(), Vector<float>(),
+				texture_rid);
+	}
 
 	// DEBUG: Draw wireframe
 	//	if (lb.indices.size() % 3 == 0) {
@@ -393,6 +456,8 @@ void Line2D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_antialiased", "antialiased"), &Line2D::set_antialiased);
 	ClassDB::bind_method(D_METHOD("get_antialiased"), &Line2D::get_antialiased);
+	ClassDB::bind_method(D_METHOD("set_point_z_indices", "z_indices"), &Line2D::set_point_z_indices);
+	ClassDB::bind_method(D_METHOD("get_point_z_indices"), &Line2D::get_point_z_indices);
 
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR2_ARRAY, "points"), "set_points", "get_points");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "closed"), "set_closed", "is_closed");
@@ -411,6 +476,7 @@ void Line2D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sharp_limit"), "set_sharp_limit", "get_sharp_limit");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "round_precision", PROPERTY_HINT_RANGE, "1,32,1"), "set_round_precision", "get_round_precision");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "antialiased"), "set_antialiased", "get_antialiased");
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "point_z_indices"), "set_point_z_indices", "get_point_z_indices");
 
 	BIND_ENUM_CONSTANT(LINE_JOINT_SHARP);
 	BIND_ENUM_CONSTANT(LINE_JOINT_BEVEL);
