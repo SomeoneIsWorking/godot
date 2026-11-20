@@ -439,9 +439,12 @@ private:
 		uint32_t image_index = 0;
 #ifdef ANDROID_ENABLED
 		uint64_t refresh_duration = 0;
+		// The display's fastest mode, which the OS may switch to while the swap chain lives.
+		uint64_t fastest_refresh_duration = 0;
 #endif
 	};
 
+	void _swappy_set_swap_interval(SwapChain *p_swap_chain, int p_max_fps);
 	bool _determine_swap_chain_format(RenderingContextDriver::SurfaceID p_surface, VkFormat &r_format, VkColorSpaceKHR &r_color_space, RDD::ColorSpace &r_rdd_color_space);
 	void _swap_chain_release(SwapChain *p_swap_chain);
 

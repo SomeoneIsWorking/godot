@@ -3853,23 +3853,17 @@ Error RenderingDeviceDriverVulkan::swap_chain_resize(CommandQueueID p_cmd_queue,
 		SwappyVk_initAndGetRefreshCycleDuration(get_jni_env(), static_cast<OS_Android *>(OS::get_singleton())->get_godot_java()->get_activity(), physical_device,
 				vk_device, swap_chain->vk_swapchain, &swap_chain->refresh_duration);
 		SwappyVk_setWindow(vk_device, swap_chain->vk_swapchain, static_cast<OS_Android *>(OS::get_singleton())->get_native_window());
-		// Target the display's fastest mode, not the one current now: the OS switches modes while the app runs,
-		// and a target of the slower period would round to two refreshes on a faster one.
-		uint64_t swap_interval = swap_chain->refresh_duration;
+		swap_chain->fastest_refresh_duration = swap_chain->refresh_duration;
 		const int period_count = SwappyVk_getSupportedRefreshPeriodsNS(nullptr, 0, swap_chain->vk_swapchain);
 		if (period_count > 0) {
 			LocalVector<uint64_t> periods;
 			periods.resize(period_count);
 			SwappyVk_getSupportedRefreshPeriodsNS(periods.ptr(), period_count, swap_chain->vk_swapchain);
 			for (uint64_t period : periods) {
-				swap_interval = MIN(swap_interval, period);
+				swap_chain->fastest_refresh_duration = MIN(swap_chain->fastest_refresh_duration, period);
 			}
 		}
-		const int max_fps = Engine::get_singleton()->get_max_fps();
-		if (max_fps > 0) {
-			swap_interval = MAX(swap_interval, (uint64_t)(1000000000 / max_fps));
-		}
-		SwappyVk_setSwapIntervalNS(vk_device, swap_chain->vk_swapchain, swap_interval);
+		_swappy_set_swap_interval(swap_chain, Engine::get_singleton()->get_max_fps());
 
 		enum SwappyModes {
 			PIPELINE_FORCED_ON,
@@ -4176,9 +4170,17 @@ void RenderingDeviceDriverVulkan::swap_chain_set_max_fps(SwapChainID p_swap_chai
 
 	SwapChain *swap_chain = (SwapChain *)(p_swap_chain.id);
 	if (swap_chain->vk_swapchain != VK_NULL_HANDLE) {
-		const uint64_t max_time = p_max_fps > 0 ? uint64_t((1000.0 * 1000.0 * 1000.0) / p_max_fps) : 0;
-		SwappyVk_setSwapIntervalNS(vk_device, swap_chain->vk_swapchain, MAX(swap_chain->refresh_duration, max_time));
+		_swappy_set_swap_interval(swap_chain, p_max_fps);
 	}
+#endif
+}
+
+void RenderingDeviceDriverVulkan::_swappy_set_swap_interval(SwapChain *p_swap_chain, int p_max_fps) {
+#ifdef SWAPPY_FRAME_PACING_ENABLED
+	// The display's fastest period, not the one current at creation: the OS switches modes while the app runs,
+	// and a slower period as the target rounds to two refreshes on a faster mode.
+	const uint64_t max_time = p_max_fps > 0 ? uint64_t((1000.0 * 1000.0 * 1000.0) / p_max_fps) : 0;
+	SwappyVk_setSwapIntervalNS(vk_device, p_swap_chain->vk_swapchain, MAX(p_swap_chain->fastest_refresh_duration, max_time));
 #endif
 }
 
